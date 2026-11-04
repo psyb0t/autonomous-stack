@@ -1,0 +1,152 @@
+name: autonomous-stack
+x-common: &common
+  restart: unless-stopped
+  init: true
+  security_opt: [no-new-privileges:true]
+  logging:
+    driver: json-file
+    options: {max-size: 10m, max-file: '5'}
+  networks: [stack]
+services:
+  prepare:
+    profiles: [tools]
+    image: ${AUTONOMOUS_IMAGE:-psyb0t/autonomous-stack:latest}
+    build: .
+    command: [prepare]
+    user: ${STACK_UID:-1000}:${STACK_GID:-1000}
+    env_file: .env
+    environment: {SERVICES_ENABLED: '', ENV: prod, LOG_LEVEL: info}
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    network_mode: none
+    volumes:
+      - ./config/generated:/stack/config/generated
+      - ./data/workspace:/stack/data/workspace
+    tmpfs: [/tmp:size=16m,noexec,nosuid]
+  handoff:
+    <<: *common
+    image: ${AUTONOMOUS_IMAGE:-psyb0t/autonomous-stack:latest}
+    build: .
+    command: [run]
+    user: ${STACK_UID:-1000}:${STACK_GID:-1000}
+    environment:
+      ENV: prod
+      LOG_LEVEL: info
+      LOG_FORMAT: json
+      LOG_ADD_SOURCE: 'true'
+      SERVICES_ENABLED: handoff
+      AUTONOMOUS_TOKEN: ${AUTONOMOUS_TOKEN:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      AUTONOMOUS_TUNNEL_TTL: ${AUTONOMOUS_TUNNEL_TTL:-10m}
+      AUTONOMOUS_TUNNEL_STARTUP_TIMEOUT: ${AUTONOMOUS_TUNNEL_STARTUP_TIMEOUT:-45s}
+      AUTONOMOUS_REQUEST_TTL: ${AUTONOMOUS_REQUEST_TTL:-24h}
+    cap_drop: [ALL]
+    read_only: true
+    mem_limit: ${HANDOFF_MEMORY:-256m}
+    cpus: ${HANDOFF_CPUS:-1}
+    pids_limit: 128
+    tmpfs: [/tmp:size=64m,noexec,nosuid]
+    volumes: [./data/handoff:/state]
+    depends_on:
+      browser: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, ./app, healthcheck]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+  mailbox:
+    <<: *common
+    image: psyb0t/mailbox:latest
+    user: ${STACK_UID:-1000}:${STACK_GID:-1000}
+    environment:
+      MAILBOXD_CONFIG: /etc/mailboxd/config.yaml
+      MAILBOXD_STATE_PATH: /var/lib/mailboxd/state.db
+      MAILBOX_TOKEN: ${MAILBOX_TOKEN:-}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+    cap_drop: [ALL]
+    read_only: true
+    mem_limit: ${MAILBOX_MEMORY:-512m}
+    cpus: ${MAILBOX_CPUS:-1}
+    pids_limit: 128
+    tmpfs: [/tmp:size=64m,noexec,nosuid]
+    volumes:
+      - ./config/generated/mailbox.yml:/etc/mailboxd/config.yaml:ro
+      - ./data/mailbox:/var/lib/mailboxd
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+  browser:
+    <<: *common
+    image: psyb0t/stealthy-auto-browse:latest
+    environment:
+      AUTH_TOKEN: ${BROWSER_TOKEN:-}
+      PUID: ${STACK_UID:-1000}
+      PGID: ${STACK_GID:-1000}
+      TZ: ${TZ:-Etc/UTC}
+      LANG: ${BROWSER_LANG:-en-US}
+      XVFB_RESOLUTION: ${BROWSER_RESOLUTION:-1440x900x24}
+    # The upstream entrypoint fixes profile ownership before dropping privileges.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    mem_limit: ${BROWSER_MEMORY:-2g}
+    cpus: ${BROWSER_CPUS:-2}
+    pids_limit: 512
+    shm_size: 512m
+    volumes:
+      - ./data/browser:/userdata
+      - ./data/recordings:/recordings
+    healthcheck:
+      test: [CMD, python3, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 90s
+  claude:
+    <<: *common
+    image: psyb0t/claudebox:latest
+    environment:
+      CLAUDEBOX_CRON_MODE: '1'
+      CLAUDEBOX_CRON_MODE_FILE: /config/cron.yml
+      CLAUDEBOX_TELEGRAM_MODE: '1'
+      CLAUDEBOX_TELEGRAM_MODE_CONFIG: /config/telegram.yml
+      CLAUDEBOX_TELEGRAM_MODE_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      CLAUDEBOX_WORKSPACE: /workspace
+      CLAUDE_CONFIG_DIR: /claude-auth
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TZ: ${TZ:-Etc/UTC}
+    # CLI installation and UID matching require a writable root and bootstrap caps.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    mem_limit: ${CLAUDE_MEMORY:-4g}
+    cpus: ${CLAUDE_CPUS:-2}
+    pids_limit: 512
+    healthcheck:
+      test: [CMD, pgrep, -f, '(^|/)python3 -m aicodebox\.modes\.telegram($| )']
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 120s
+    volumes:
+      - ./config/generated:/config:ro
+      - ./config/agent.md:/workspace/agent/CLAUDE.md:ro
+      - ./data/workspace:/workspace
+      - ./data/claudebox:/home/aicode/.aicodebox
+      - type: bind
+        source: ${CLAUDE_AUTH_DIR:-./data/claude}
+        target: /claude-auth
+        bind: {create_host_path: false}
+    depends_on:
+      mailbox: {condition: service_healthy}
+      browser: {condition: service_healthy}
+      handoff: {condition: service_healthy}
+networks:
+  stack:
+    driver: bridge

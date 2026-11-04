@@ -1,0 +1,9 @@
+.vscode
+coverage.*
+CLAUDE.md
+.test
+git-update.sh
+git-update.sh.debot
+plan.md
+coverage-percent.txt
+.telemetry/

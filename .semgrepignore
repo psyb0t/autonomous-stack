@@ -1,0 +1,11 @@
+# Dependencies are checked by govulncheck. SAST scans the project's own source.
+vendor/
+.cache/
+.research_files/
+.testing/
+.plan/
+.git/
+data/
+config/generated/
+.env
+build/

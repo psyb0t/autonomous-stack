@@ -1,0 +1,4 @@
+title = "Autonomous Stack secret scanning"
+
+[extend]
+useDefault = true
