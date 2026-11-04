@@ -1,6 +1,6 @@
 # Development and CI
 
-`internal/pkg/services/handoff/` implements the servicepack lifecycle. `internal/pkg/handoff/` owns requests, notifications and tunnel processes. `internal/pkg/http/server/` owns MCP and the viewer proxy. `internal/pkg/setup/` generates deployment configuration.
+`internal/pkg/services/handoff/` implements the servicepack lifecycle. `internal/pkg/handoff/` owns help requests, notifications and assistance coordination. `internal/pkg/http/server/` owns MCP and the viewer proxy. `internal/pkg/setup/` generates deployment configuration.
 
 Use Make for tooling. Normal tooling has no Docker socket. Infrastructure tests receive it only through the framework's dedicated test target. `make test-coverage` uses the race detector, includes integration packages and enforces the coverage floor. Fixtures use local HTTP, real files and owned child processes, without paid calls, bot polling or public tunnels.
 
@@ -9,6 +9,12 @@ Use Make for tooling. Normal tooling has no Docker socket. Infrastructure tests 
 `make test-runtime` builds the helper and starts isolated browser, Mailbox and helper containers with disposable account settings. It tests generated configuration, the real viewer, readiness and MCP authentication, then stops only its own fixtures. It never starts Claude, polls Telegram or opens a public tunnel. Pull the upstream service images with `make pull` first.
 
 `make audit-compose` validates the rendered deployment without printing credentials. It rejects public port bindings, host access, unrestricted capabilities, mutable external images and missing runtime restrictions. Browser and Claudebox have the exact bootstrap capability exceptions described in the deployment guide. CI runs both the runtime smoke test and this audit.
+
+`make test-tailnet` starts a disposable Headscale controller, two real Tailscale nodes and a helper with a local notification fixture. It verifies stable short-name access over WireGuard before, during and after assistance, without cookies, and preserved access after sidecar restart. It uses no owner credentials or existing tailnet and stops only its own containers. CI runs it alongside the browser smoke test.
+
+`make test-captcha-config` renders the production Compose model with disabled defaults and all seven provider names, checking exact value forwarding and browser-only key exposure. It runs without contacting solver providers and is included in `make test-runtime` and CI.
+
+`make test-notify` checks the send-only progress helper with a mocked Telegram HTTP boundary, including malformed configuration, message limits and credential-safe errors. The runtime test target includes it. Live phone tests require owner-provided Claude, Telegram and Dikciz credentials and must not expose SMS bodies or verification codes in reports.
 
 ## Publishing
 

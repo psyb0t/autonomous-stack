@@ -33,6 +33,7 @@ jq -e '
        $s.logging.options["max-size"] != null and
        $s.logging.options["max-file"] != null and
        $s.restart == "unless-stopped" and
+       all($s.tmpfs[]?; split(":")[0] | startswith("/")) and
        all($s.ports[]?; .host_ip == "127.0.0.1" or .host_ip == "::1") and
        all($s.volumes[]?;
          .type != "bind" or

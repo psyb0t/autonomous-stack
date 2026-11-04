@@ -51,7 +51,6 @@ func TestStore(t *testing.T) {
 	require.Error(t, saveState(path, state))
 	_, err = New(
 		config.Config{StatePath: path},
-		&fixtureLauncher{},
 		&fixtureNotifier{},
 	)
 	require.Error(t, err)

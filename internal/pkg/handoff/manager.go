@@ -3,8 +3,6 @@ package handoff
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -21,20 +19,15 @@ import (
 const secretBytes = 32
 
 type Manager struct {
-	mu         sync.Mutex
-	cfg        config.Config
-	launcher   Launcher
-	notifier   Notifier
-	state      State
-	process    Process
-	accessHash [sha256.Size]byte
-	link       string
-	closed     bool
+	mu       sync.Mutex
+	cfg      config.Config
+	notifier Notifier
+	state    State
+	closed   bool
 }
 
 func New(
 	cfg config.Config,
-	launcher Launcher,
 	notifier Notifier,
 ) (*Manager, error) {
 	state, err := loadState(cfg.StatePath)
@@ -43,15 +36,17 @@ func New(
 	}
 
 	if state.Phase == PhaseActive {
-		state.Phase = PhaseExpired
+		state.ExpiresAt = time.Time{}
 		if err := saveState(cfg.StatePath, state); err != nil {
-			return nil, ctxerrors.Wrap(err, "invalidate tunnel after restart")
+			return nil, ctxerrors.Wrap(
+				err,
+				"preserve active coordination after restart",
+			)
 		}
 	}
 
 	return &Manager{
 		cfg:      cfg,
-		launcher: launcher,
 		notifier: notifier,
 		state:    state,
 	}, nil
@@ -126,8 +121,8 @@ func (m *Manager) notifyPending(ctx context.Context) error {
 	}
 
 	message := fmt.Sprintf(
-		"I need help: %s\nRequest: %s\nReply ready %s when available.",
-		m.state.Reason, m.state.ID, m.state.ID,
+		"I need help: %s\nBrowser: %s\nReply ready when available.",
+		m.state.Reason, m.cfg.ViewerURL,
 	)
 	if err := m.notifier.Send(ctx, message); err != nil {
 		return ctxerrors.Wrap(err, "notify owner; pending request retained")
@@ -172,6 +167,10 @@ func (m *Manager) Start(
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if id == "" {
+		id = m.state.ID
+	}
+
 	if !userReady || id == "" || id != m.state.ID || m.closed {
 		return StartResult{}, ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
@@ -179,7 +178,7 @@ func (m *Manager) Start(
 		)
 	}
 
-	if !time.Now().Before(m.state.ExpiresAt) {
+	if m.state.Phase == PhasePending && !time.Now().Before(m.state.ExpiresAt) {
 		return StartResult{}, ctxerrors.Wrap(
 			commerr.ErrConflict,
 			"handoff request has expired",
@@ -187,7 +186,7 @@ func (m *Manager) Start(
 	}
 
 	if m.state.Phase == PhaseActive {
-		return StartResult{State: m.state, URL: m.link}, nil
+		return StartResult{State: m.state, URL: m.cfg.ViewerURL}, nil
 	}
 
 	if m.state.Phase != PhasePending {
@@ -201,39 +200,22 @@ func (m *Manager) Start(
 }
 
 func (m *Manager) openLocked(ctx context.Context) (StartResult, error) {
-	secret, err := newSecret()
-	if err != nil {
-		return StartResult{}, ctxerrors.Wrap(err, "create viewer credential")
-	}
-
-	startupCtx, cancel := context.WithTimeout(ctx, m.cfg.StartupTimeout)
-	defer cancel()
-
-	process, err := m.launcher.Start(startupCtx, "http://"+m.cfg.ViewerAddress)
-	if err != nil {
-		return StartResult{}, ctxerrors.Wrap(err, "open browser tunnel")
-	}
-
-	m.process = process
-	m.accessHash = sha256.Sum256([]byte(secret))
-	m.link = process.URL() + "/connect/" + secret
 	m.state.Phase = PhaseActive
 
-	m.state.ExpiresAt = time.Now().UTC().Add(m.cfg.TunnelTTL)
+	m.state.ExpiresAt = time.Time{}
 	if err := saveState(m.cfg.StatePath, m.state); err != nil {
 		stopErr := m.stopLocked(context.WithoutCancel(ctx), PhaseFailed)
 
 		return StartResult{}, ctxerrors.Wrap(
 			errors.Join(err, stopErr),
-			"persist tunnel state",
+			"persist active coordination",
 		)
 	}
 
 	message := fmt.Sprintf(
-		"Browser handoff: %s\nExpires at %s. Reply done %s when finished.",
-		m.link,
-		m.state.ExpiresAt.Format(time.RFC3339),
-		m.state.ID,
+		`Browser: %s
+Reply done when finished so I can resume. Browser access stays available.`,
+		m.cfg.ViewerURL,
 	)
 	if err := m.notifier.Send(ctx, message); err != nil {
 		stopErr := m.stopLocked(context.WithoutCancel(ctx), PhaseFailed)
@@ -247,12 +229,16 @@ func (m *Manager) openLocked(ctx context.Context) (StartResult, error) {
 	ctxscope.GetLogger(ctx).
 		Info("browser handoff opened", "request_id", m.state.ID)
 
-	return StartResult{State: m.state, URL: m.link}, nil
+	return StartResult{State: m.state, URL: m.cfg.ViewerURL}, nil
 }
 
 func (m *Manager) Finish(ctx context.Context, id string) (State, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if id == "" {
+		id = m.state.ID
+	}
 
 	if id == "" || id != m.state.ID {
 		return State{}, ctxerrors.Wrap(
@@ -288,26 +274,11 @@ func (m *Manager) Status() State {
 	return m.state
 }
 
-func (m *Manager) Authorize(secret string) bool {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if m.closed || m.state.Phase != PhaseActive ||
-		!time.Now().Before(m.state.ExpiresAt) ||
-		secret == "" {
-		return false
-	}
-
-	provided := sha256.Sum256([]byte(secret))
-
-	return subtle.ConstantTimeCompare(provided[:], m.accessHash[:]) == 1
-}
-
 func (m *Manager) Tick(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if m.state.Phase != PhasePending && m.state.Phase != PhaseActive {
+	if m.state.Phase != PhasePending {
 		return nil
 	}
 
@@ -315,44 +286,19 @@ func (m *Manager) Tick(ctx context.Context) error {
 		return m.stopLocked(ctx, PhaseExpired)
 	}
 
-	if m.process != nil {
-		select {
-		case <-m.process.Done():
-			ctxscope.GetLogger(ctx).
-				Warn("browser tunnel exited", "request_id", m.state.ID)
-
-			return m.stopLocked(ctx, PhaseFailed)
-		default:
-		}
-	}
-
 	return nil
 }
 
-func (m *Manager) Close(ctx context.Context) error {
+func (m *Manager) Close(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	m.closed = true
-	if m.process == nil {
-		return nil
-	}
 
-	return m.stopLocked(ctx, PhaseExpired)
+	return nil
 }
 
-func (m *Manager) stopLocked(ctx context.Context, phase Phase) error {
-	m.accessHash = [sha256.Size]byte{}
-
-	m.link = ""
-	if m.process != nil {
-		if err := m.process.Stop(ctx); err != nil {
-			return ctxerrors.Wrap(err, "stop owned cloudflared process")
-		}
-
-		m.process = nil
-	}
-
+func (m *Manager) stopLocked(_ context.Context, phase Phase) error {
 	m.state.Phase = phase
 	if err := saveState(m.cfg.StatePath, m.state); err != nil {
 		return ctxerrors.Wrap(err, "save closed handoff")

@@ -17,30 +17,31 @@ import (
 const privateDirectoryMode = 0o700
 
 type Config struct {
-	TelegramChatID int64  `env:"TELEGRAM_CHAT_ID,required"`
-	TelegramUserID int64  `env:"TELEGRAM_USER_ID,required"`
-	TelegramToken  string `env:"TELEGRAM_BOT_TOKEN,required"`
-	Model          string `default:"sonnet"                  env:"CLAUDE_MODEL"`
-	Effort         string `default:"high"                    env:"CLAUDE_EFFORT"`
-	Schedule       string `default:"*/30 * * * *"            env:"HEARTBEAT_SCHEDULE"`
-	Heartbeat      string `env:"HEARTBEAT_PROMPT,required"`
-	SystemPrompt   string `env:"AGENT_PROMPT,required"`
-	HandoffToken   string `env:"AUTONOMOUS_TOKEN,required"`
-	BrowserToken   string `env:"BROWSER_TOKEN,required"`
-	MailboxToken   string `env:"MAILBOX_TOKEN,required"`
-	IMAPHost       string `env:"MAIL_IMAP_HOST,required"`
-	IMAPPort       int    `default:"993"                     env:"MAIL_IMAP_PORT"`
-	IMAPTLS        string `default:"ssl"                     env:"MAIL_IMAP_TLS"`
-	SMTPHost       string `env:"MAIL_SMTP_HOST,required"`
-	SMTPPort       int    `default:"587"                     env:"MAIL_SMTP_PORT"`
-	SMTPTLS        string `default:"starttls"                env:"MAIL_SMTP_TLS"`
-	MailUsername   string `env:"MAIL_USERNAME,required"`
-	MailPassword   string `env:"MAIL_PASSWORD,required"`
-	MailFrom       string `env:"MAIL_FROM,required"`
-	MailSaveSent   bool   `default:"true"                    env:"MAIL_SAVE_SENT"`
-	AuthservID     string `env:"MAIL_TRUSTED_AUTHSERV_ID"`
-	PhoneURL       string `env:"DIKCIZ_MCP_URL"`
-	PhoneToken     string `env:"DIKCIZ_API_KEY"`
+	TelegramChatID  int64  `env:"TELEGRAM_CHAT_ID,required"`
+	TelegramUserID  int64  `env:"TELEGRAM_USER_ID,required"`
+	TelegramToken   string `env:"TELEGRAM_BOT_TOKEN,required"`
+	Model           string `default:"sonnet"                  env:"CLAUDE_MODEL"`
+	Effort          string `default:"high"                    env:"CLAUDE_EFFORT"`
+	Schedule        string `default:"*/30 * * * *"            env:"HEARTBEAT_SCHEDULE"`
+	Heartbeat       string `env:"HEARTBEAT_PROMPT,required"`
+	SystemPrompt    string `env:"AGENT_PROMPT,required"`
+	HandoffToken    string `env:"AUTONOMOUS_TOKEN,required"`
+	BrowserToken    string `env:"BROWSER_TOKEN,required"`
+	MailboxToken    string `env:"MAILBOX_TOKEN,required"`
+	IMAPHost        string `env:"MAIL_IMAP_HOST,required"`
+	IMAPPort        int    `default:"993"                     env:"MAIL_IMAP_PORT"`
+	IMAPTLS         string `default:"ssl"                     env:"MAIL_IMAP_TLS"`
+	SMTPHost        string `env:"MAIL_SMTP_HOST,required"`
+	SMTPPort        int    `default:"587"                     env:"MAIL_SMTP_PORT"`
+	SMTPTLS         string `default:"starttls"                env:"MAIL_SMTP_TLS"`
+	MailUsername    string `env:"MAIL_USERNAME,required"`
+	MailPassword    string `env:"MAIL_PASSWORD,required"`
+	MailFrom        string `env:"MAIL_FROM,required"`
+	MailSaveSent    bool   `default:"true"                    env:"MAIL_SAVE_SENT"`
+	AuthservID      string `env:"MAIL_TRUSTED_AUTHSERV_ID"`
+	PhoneURL        string `env:"DIKCIZ_MCP_URL"`
+	PhoneToken      string `env:"DIKCIZ_API_KEY"`
+	TailnetHostname string `default:"autonomous-stack"        env:"TS_HOSTNAME"`
 }
 
 func Load() (Config, error) {
@@ -57,6 +58,10 @@ func Load() (Config, error) {
 }
 
 func (c Config) Validate() error {
+	if err := config.ValidateHostname(c.TailnetHostname); err != nil {
+		return ctxerrors.Wrap(err, "tailnet hostname")
+	}
+
 	if err := c.validateOwner(); err != nil {
 		return ctxerrors.Wrap(err, "owner configuration")
 	}

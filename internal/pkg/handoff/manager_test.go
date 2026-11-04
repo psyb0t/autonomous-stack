@@ -14,40 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type fixtureProcess struct {
-	done      chan struct{}
-	once      sync.Once
-	stopError error
-}
-
-func (p *fixtureProcess) URL() string {
-	return "https://fixture.trycloudflare.com"
-}
-func (p *fixtureProcess) Done() <-chan struct{} { return p.done }
-func (p *fixtureProcess) Stop(context.Context) error {
-	p.once.Do(func() { close(p.done) })
-
-	return p.stopError
-}
-
-type fixtureLauncher struct {
-	count   int
-	process *fixtureProcess
-	fail    bool
-}
-
-//nolint:ireturn // Implements the tunnel Launcher boundary for tests.
-func (l *fixtureLauncher) Start(context.Context, string) (Process, error) {
-	l.count++
-	if l.fail {
-		return nil, commerr.ErrUnavailable
-	}
-
-	l.process = &fixtureProcess{done: make(chan struct{})}
-
-	return l.process, nil
-}
-
 type fixtureNotifier struct {
 	messages []string
 	fail     bool
@@ -63,31 +29,27 @@ func (n *fixtureNotifier) Send(_ context.Context, message string) error {
 	return nil
 }
 
-func newFixture(t *testing.T) (*Manager, *fixtureLauncher, *fixtureNotifier) {
+func newFixture(t *testing.T) (*Manager, *fixtureNotifier) {
 	t.Helper()
 
-	l, n := &fixtureLauncher{}, &fixtureNotifier{}
+	n := &fixtureNotifier{}
 	m, err := New(
 		config.Config{
-			StatePath:      filepath.Join(t.TempDir(), "state.json"),
-			RequestTTL:     time.Hour,
-			TunnelTTL:      time.Minute,
-			StartupTimeout: time.Second,
-			ViewerAddress:  "127.0.0.1:8081",
+			StatePath:  filepath.Join(t.TempDir(), "state.json"),
+			RequestTTL: time.Hour,
+			ViewerURL:  "http://autonomous-stack",
 		},
-		l,
 		n,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, m.Close(t.Context())) })
 
-	return m, l, n
+	return m, n
 }
 
 func TestManagerLifecycle(t *testing.T) {
-	m, launcher, notifications := newFixture(t)
+	m, notifications := newFixture(t)
 	require.Equal(t, PhaseIdle, m.Status().Phase)
-	require.False(t, m.Authorize("anything"))
 	state, err := m.Request(
 		t.Context(),
 		"task",
@@ -95,7 +57,6 @@ func TestManagerLifecycle(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, PhasePending, state.Phase)
-	require.Zero(t, launcher.count)
 	require.Len(t, notifications.messages, 1)
 	duplicate, err := m.Request(t.Context(), "task", "same task")
 	require.NoError(t, err)
@@ -107,28 +68,23 @@ func TestManagerLifecycle(t *testing.T) {
 	require.ErrorIs(t, err, commerr.ErrValidationFailed)
 	_, err = m.Start(t.Context(), "wrong", true)
 	require.ErrorIs(t, err, commerr.ErrValidationFailed)
-	require.Zero(t, launcher.count)
 	active, err := m.Start(t.Context(), state.ID, true)
 	require.NoError(t, err)
 
-	secret := strings.TrimPrefix(active.URL, launcher.process.URL()+"/connect/")
-	require.True(t, m.Authorize(secret))
-	require.False(t, m.Authorize(secret+"x"))
+	require.Equal(t, "http://autonomous-stack", active.URL)
 	require.Len(t, notifications.messages, 2)
 	again, err := m.Start(t.Context(), state.ID, true)
 	require.NoError(t, err)
 	require.Equal(t, active.URL, again.URL)
-	require.Equal(t, 1, launcher.count)
 
 	data, err := os.ReadFile(m.cfg.StatePath)
 	require.NoError(t, err)
-	require.NotContains(t, string(data), secret)
+	require.NotContains(t, string(data), "/connect/")
 	_, err = m.Finish(t.Context(), "wrong")
 	require.ErrorIs(t, err, commerr.ErrNotFound)
 	finished, err := m.Finish(t.Context(), state.ID)
 	require.NoError(t, err)
 	require.Equal(t, PhaseCompleted, finished.Phase)
-	require.False(t, m.Authorize(secret))
 	_, err = m.Finish(t.Context(), state.ID)
 	require.NoError(t, err)
 	_, err = m.Start(t.Context(), state.ID, true)
@@ -139,16 +95,13 @@ func TestManagerLifecycle(t *testing.T) {
 func TestManagerFailures(t *testing.T) {
 	for _, scenario := range []string{
 		"notify-pending",
-		"launch",
 		"notify-link",
 		"expired",
-		"process-exit",
 		"persist",
 		"closed",
-		"stop",
 	} {
 		t.Run(scenario, func(t *testing.T) {
-			m, launcher, notifications := newFixture(t)
+			m, notifications := newFixture(t)
 			if scenario == "notify-pending" {
 				notifications.fail = true
 			}
@@ -168,8 +121,6 @@ func TestManagerFailures(t *testing.T) {
 			require.NoError(t, err)
 
 			switch scenario {
-			case "launch":
-				launcher.fail = true
 			case "notify-link":
 				notifications.fail = true
 			case "expired":
@@ -181,61 +132,34 @@ func TestManagerFailures(t *testing.T) {
 				require.NoError(t, m.Close(t.Context()))
 			}
 
-			result, err := m.Start(t.Context(), state.ID, true)
-			if scenario != "process-exit" && scenario != "stop" {
-				require.Error(t, err)
-				require.False(t, m.Authorize("anything"))
+			_, err = m.Start(t.Context(), state.ID, true)
+			require.Error(t, err)
 
-				if scenario == "persist" {
-					require.NoError(t, os.Remove(m.cfg.StatePath))
-				}
-
-				return
+			if scenario == "persist" {
+				require.NoError(t, os.Remove(m.cfg.StatePath))
 			}
-
-			require.NoError(t, err)
-
-			if scenario == "stop" {
-				launcher.process.stopError = commerr.ErrUnavailable
-				_, err = m.Finish(t.Context(), state.ID)
-				require.Error(t, err)
-
-				launcher.process.stopError = nil
-			} else {
-				require.NoError(t, launcher.process.Stop(t.Context()))
-				require.NoError(t, m.Tick(t.Context()))
-				require.Equal(t, PhaseFailed, m.Status().Phase)
-			}
-
-			require.False(
-				t,
-				m.Authorize(
-					strings.TrimPrefix(
-						result.URL,
-						launcher.process.URL()+"/connect/",
-					),
-				),
-			)
 		})
 	}
 }
 
 func TestManagerRestartAndExpiry(t *testing.T) {
-	m, launcher, notifications := newFixture(t)
+	m, notifications := newFixture(t)
 	state, err := m.Request(t.Context(), "task", "reason")
 	require.NoError(t, err)
-	restarted, err := New(m.cfg, launcher, notifications)
+	restarted, err := New(m.cfg, notifications)
 	require.NoError(t, err)
 	require.Equal(t, state.ID, restarted.Status().ID)
 	_, err = m.Start(t.Context(), state.ID, true)
 	require.NoError(t, err)
-	restarted, err = New(m.cfg, launcher, notifications)
+	restarted, err = New(m.cfg, notifications)
 	require.NoError(t, err)
-	require.Equal(t, PhaseExpired, restarted.Status().Phase)
+	require.Equal(t, PhaseActive, restarted.Status().Phase)
 
 	m.state.ExpiresAt = time.Now().Add(-time.Second)
 	require.NoError(t, m.Tick(t.Context()))
-	require.Equal(t, PhaseExpired, m.Status().Phase)
+	require.Equal(t, PhaseActive, m.Status().Phase)
+	_, err = m.Finish(t.Context(), "")
+	require.NoError(t, err)
 	state, err = m.Request(t.Context(), "task", "reason")
 	require.NoError(t, err)
 
@@ -246,7 +170,7 @@ func TestManagerRestartAndExpiry(t *testing.T) {
 }
 
 func TestManagerConcurrentRequests(t *testing.T) {
-	m, launcher, notifications := newFixture(t)
+	m, notifications := newFixture(t)
 
 	var group sync.WaitGroup
 
@@ -269,7 +193,6 @@ func TestManagerConcurrentRequests(t *testing.T) {
 	}
 
 	require.Len(t, notifications.messages, 1)
-	require.Zero(t, launcher.count)
 
 	startErrors := make(chan error, 20)
 	id := m.Status().ID
@@ -288,7 +211,6 @@ func TestManagerConcurrentRequests(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.Equal(t, 1, launcher.count)
 	require.Len(t, notifications.messages, 2)
 
 	for _, input := range []struct{ key, reason string }{
@@ -304,4 +226,30 @@ func TestManagerConcurrentRequests(t *testing.T) {
 	require.NoError(t, m.Close(t.Context()))
 	_, err := m.Request(t.Context(), "task", "reason")
 	require.Error(t, err)
+}
+
+func TestActiveCoordinationHasNoDeadline(t *testing.T) {
+	m, notifications := newFixture(t)
+	state, err := m.Request(t.Context(), "task", "reason")
+	require.NoError(t, err)
+	active, err := m.Start(t.Context(), "", true)
+	require.NoError(t, err)
+	require.True(t, active.State.ExpiresAt.IsZero())
+	require.NotContains(t, notifications.messages[0], state.ID)
+	require.NotContains(t, notifications.messages[1], state.ID)
+	require.Contains(t, notifications.messages[0], "Reply ready")
+	require.Contains(t, notifications.messages[1], "Reply done")
+	require.NotContains(t, notifications.messages[1], "/connect/")
+
+	m.state.ExpiresAt = time.Now().Add(-time.Hour)
+	require.NoError(t, m.Tick(t.Context()))
+	require.Equal(t, PhaseActive, m.Status().Phase)
+	require.NoError(t, m.Close(t.Context()))
+	restarted, err := New(m.cfg, notifications)
+	require.NoError(t, err)
+	require.Equal(t, PhaseActive, restarted.Status().Phase)
+	require.True(t, restarted.Status().ExpiresAt.IsZero())
+	_, err = restarted.Finish(t.Context(), "")
+	require.NoError(t, err)
+	require.Equal(t, PhaseCompleted, restarted.Status().Phase)
 }

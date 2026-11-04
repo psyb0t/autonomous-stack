@@ -14,7 +14,7 @@ Setup replaces generated MCP/settings files, not task artifacts. `config/generat
 
 No host ports are published. Do not attach unrelated containers to this Compose network. The browser's raw viewer is unauthenticated within that network; never publish it directly.
 
-The helper and Mailbox run non-root with no capabilities and read-only roots. Each has only its required writable state and temporary storage.
+The helper, Mailbox and Tailscale sidecar run non-root with no capabilities and read-only roots. Each has only its required writable state and temporary storage.
 
 Browser and Claudebox have writable roots and narrow bootstrap capabilities. Browser fixes profile ownership before dropping privileges. Claudebox installs the supported Claude CLI, matches UID/GID and drops privileges. These exceptions are required by the upstream entrypoints. No container receives the Docker socket, host devices or the whole home directory.
 
@@ -34,4 +34,6 @@ Claude has unattended tool access. Use dedicated accounts, approve a narrow task
 
 Missing Telegram/mail configuration is rejected by setup. Start the bot chat before deploying and stop other pollers using that token. A phone URL must work from the container network, including any VPN routing.
 
-A tunnel startup failure leaves the request pending. Link-delivery failure closes the tunnel. Finish a broken handoff and inspect health rather than exposing raw viewer ports.
+A sidecar login or Serve failure stops `make up` with an error. Check `make logs`, tailnet key validity and control-server reachability. Notification failure affects help coordination, not viewer access. Finish a broken help request and inspect health rather than exposing raw viewer ports.
+
+The sidecar has its own tailnet identity and does not change the host's Tailscale login. Userspace networking is sufficient because it only accepts incoming viewer connections. Other stack containers do not automatically use the sidecar for outgoing tailnet traffic. Keep `data/tailscale/` in private backups; `make down` preserves it. Restrict its node's port 80 to the intended owner through tailnet ACLs.

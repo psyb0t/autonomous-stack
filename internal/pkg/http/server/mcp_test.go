@@ -20,42 +20,14 @@ type notifier struct{}
 
 func (notifier) Send(context.Context, string) error { return nil }
 
-type launcher struct{ process *process }
-
-//nolint:ireturn // Implements the tunnel Launcher boundary for tests.
-func (l launcher) Start(
-	context.Context,
-	string,
-) (handoff.Process, error) {
-	return l.process, nil
-}
-
-type process struct{ done chan struct{} }
-
-func (p *process) URL() string {
-	return "https://fixture.trycloudflare.com"
-}
-func (p *process) Done() <-chan struct{} { return p.done }
-func (p *process) Stop(context.Context) error {
-	select {
-	case <-p.done:
-	default:
-		close(p.done)
-	}
-
-	return nil
-}
-
 func managerFixture(t *testing.T) *handoff.Manager {
 	t.Helper()
 	manager, err := handoff.New(
 		config.Config{
-			StatePath:      filepath.Join(t.TempDir(), "state.json"),
-			RequestTTL:     time.Hour,
-			TunnelTTL:      time.Minute,
-			StartupTimeout: time.Second,
+			StatePath:  filepath.Join(t.TempDir(), "state.json"),
+			RequestTTL: time.Hour,
+			ViewerURL:  "http://autonomous-stack",
 		},
-		launcher{process: &process{done: make(chan struct{})}},
 		notifier{},
 	)
 	require.NoError(t, err)
@@ -179,12 +151,10 @@ func TestMCP(t *testing.T) {
 		arguments map[string]any
 	}{
 		{name: "start_handoff", arguments: map[string]any{
-			"request_id": manager.Status().ID, "user_ready": true,
+			"user_ready": true,
 		}},
 		{name: "handoff_status", arguments: map[string]any{}},
-		{name: "finish_handoff", arguments: map[string]any{
-			"request_id": manager.Status().ID,
-		}},
+		{name: "finish_handoff", arguments: map[string]any{}},
 	} {
 		payload, err := json.Marshal(map[string]any{
 			"jsonrpc": "2.0", "id": 5, "method": "tools/call",

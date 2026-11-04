@@ -15,11 +15,11 @@ type requestInput struct {
 	Reason string `json:"reason"`
 }
 type startInput struct {
-	RequestID string `json:"request_id"`
+	RequestID string `json:"request_id,omitempty"`
 	UserReady bool   `json:"user_ready"`
 }
 type finishInput struct {
-	RequestID string `json:"request_id"`
+	RequestID string `json:"request_id,omitempty"`
 }
 type handlers struct{ manager *handoff.Manager }
 
@@ -31,21 +31,24 @@ func MCP(manager *handoff.Manager, token string) http.Handler {
 	)
 	h := handlers{manager: manager}
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "request_help",
-		Description: "Ask the Telegram owner for help. No tunnel is opened.",
+		Name: "request_help",
+		Description: `Ask the owner for help and pause automation.
+Tailnet viewer access stays available.`,
 	}, h.request)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "start_handoff",
-		Description: `Open the viewer only after the owner replies ready.
-Pass the request ID and user_ready=true. The owner receives the link.`,
+		Description: `Pause after the owner replies ready. Pass user_ready=true.
+Omit the request ID to use the current request.
+Viewer access is always available on the tailnet.`,
 	}, h.start)
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "finish_handoff",
-		Description: "Close the viewer when the owner finishes or cancels.",
+		Name: "finish_handoff",
+		Description: `Finish current assistance so automation can resume.
+Does not close browser access.`,
 	}, h.finish)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "handoff_status",
-		Description: "Read the current help request and viewer status.",
+		Description: "Read the current help request and coordination status.",
 	}, h.status)
 
 	handler := mcp.NewStreamableHTTPHandler(
@@ -71,7 +74,6 @@ func (h handlers) start(
 ) (*mcp.CallToolResult, handoff.State, error) {
 	result, err := h.manager.Start(ctx, in.RequestID, in.UserReady)
 
-	// The viewer credential goes only to the owner, not into Claude's history.
 	return nil, result.State, ctxerrors.Wrap(err, "start browser handoff")
 }
 

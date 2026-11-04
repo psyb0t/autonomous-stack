@@ -15,7 +15,12 @@ services:
     command: [prepare]
     user: ${STACK_UID:-1000}:${STACK_GID:-1000}
     env_file: .env
-    environment: {SERVICES_ENABLED: '', ENV: prod, LOG_LEVEL: info}
+    environment:
+      SERVICES_ENABLED: ''
+      ENV: prod
+      LOG_LEVEL: info
+      # Setup reads .env but does not need the browser's solver credential.
+      CAPTCHA_SOLVER_API_KEY: ''
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true
@@ -23,7 +28,7 @@ services:
     volumes:
       - ./config/generated:/stack/config/generated
       - ./data/workspace:/stack/data/workspace
-    tmpfs: [/tmp:size=16m,noexec,nosuid]
+    tmpfs: ['/tmp:size=16m,noexec,nosuid']
   handoff:
     <<: *common
     image: ${AUTONOMOUS_IMAGE:-psyb0t/autonomous-stack:latest}
@@ -39,15 +44,14 @@ services:
       AUTONOMOUS_TOKEN: ${AUTONOMOUS_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      AUTONOMOUS_TUNNEL_TTL: ${AUTONOMOUS_TUNNEL_TTL:-10m}
-      AUTONOMOUS_TUNNEL_STARTUP_TIMEOUT: ${AUTONOMOUS_TUNNEL_STARTUP_TIMEOUT:-45s}
+      AUTONOMOUS_VIEWER_URL: http://${TS_HOSTNAME:-autonomous-stack}
       AUTONOMOUS_REQUEST_TTL: ${AUTONOMOUS_REQUEST_TTL:-24h}
     cap_drop: [ALL]
     read_only: true
     mem_limit: ${HANDOFF_MEMORY:-256m}
     cpus: ${HANDOFF_CPUS:-1}
     pids_limit: 128
-    tmpfs: [/tmp:size=64m,noexec,nosuid]
+    tmpfs: ['/tmp:size=64m,noexec,nosuid']
     volumes: [./data/handoff:/state]
     depends_on:
       browser: {condition: service_healthy}
@@ -57,6 +61,34 @@ services:
       timeout: 3s
       retries: 5
       start_period: 15s
+  tailscale:
+    <<: *common
+    image: tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
+    user: ${STACK_UID:-1000}:${STACK_GID:-1000}
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ${TS_HOSTNAME:-autonomous-stack}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_AUTH_ONCE: 'true'
+      TS_USERSPACE: 'true'
+      TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:---accept-dns=false}
+      TS_ENABLE_HEALTH_CHECK: 'true'
+      TS_LOCAL_ADDR_PORT: 127.0.0.1:9002
+    cap_drop: [ALL]
+    read_only: true
+    mem_limit: ${TAILSCALE_MEMORY:-256m}
+    cpus: ${TAILSCALE_CPUS:-1}
+    pids_limit: 128
+    volumes: [./data/tailscale:/var/lib/tailscale]
+    tmpfs: ['/tmp:size=64m,noexec,nosuid', '/var/run:size=8m,noexec,nosuid,mode=1777']
+    depends_on:
+      handoff: {condition: service_healthy}
+    healthcheck:
+      test: [CMD, wget, -q, --spider, http://127.0.0.1:9002/healthz]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
   mailbox:
     <<: *common
     image: psyb0t/mailbox:latest
@@ -72,7 +104,7 @@ services:
     mem_limit: ${MAILBOX_MEMORY:-512m}
     cpus: ${MAILBOX_CPUS:-1}
     pids_limit: 128
-    tmpfs: [/tmp:size=64m,noexec,nosuid]
+    tmpfs: ['/tmp:size=64m,noexec,nosuid']
     volumes:
       - ./config/generated/mailbox.yml:/etc/mailboxd/config.yaml:ro
       - ./data/mailbox:/var/lib/mailboxd
@@ -92,6 +124,9 @@ services:
       TZ: ${TZ:-Etc/UTC}
       LANG: ${BROWSER_LANG:-en-US}
       XVFB_RESOLUTION: ${BROWSER_RESOLUTION:-1440x900x24}
+      CAPTCHA_SOLVER_ENABLED: ${CAPTCHA_SOLVER_ENABLED:-false}
+      CAPTCHA_SOLVER_PROVIDER: ${CAPTCHA_SOLVER_PROVIDER:-}
+      CAPTCHA_SOLVER_API_KEY: ${CAPTCHA_SOLVER_API_KEY:-}
     # The upstream entrypoint fixes profile ownership before dropping privileges.
     cap_drop: [ALL]
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
@@ -117,6 +152,7 @@ services:
       CLAUDEBOX_TELEGRAM_MODE: '1'
       CLAUDEBOX_TELEGRAM_MODE_CONFIG: /config/telegram.yml
       CLAUDEBOX_TELEGRAM_MODE_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
       CLAUDEBOX_WORKSPACE: /workspace
       CLAUDE_CONFIG_DIR: /claude-auth
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
@@ -137,6 +173,7 @@ services:
     volumes:
       - ./config/generated:/config:ro
       - ./config/agent.md:/workspace/agent/CLAUDE.md:ro
+      - ./scripts/telegram_notify.py:/opt/stack/telegram_notify.py:ro
       - ./data/workspace:/workspace
       - ./data/claudebox:/home/aicode/.aicodebox
       - type: bind

@@ -8,9 +8,9 @@
 [![imported by](https://raw.githubusercontent.com/psyb0t/autonomous-stack/badges/importers.svg)](https://github.com/psyb0t/autonomous-stack/blob/badges/importers.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/autonomous-stack?style=flat-square)](https://hub.docker.com/r/psyb0t/autonomous-stack)
 
-Self-hosted autonomous agent stack with scheduled work, Telegram, email, a persistent browser and temporary human handoffs. Currently runs Claude Code through Claudebox.
+Self-hosted autonomous agent stack with scheduled work, Telegram, email, a persistent browser and human assistance. Currently runs Claude Code through Claudebox.
 
-Claude does the work. Claudebox wakes it on a schedule and receives your Telegram messages. Mailbox and the browser expose MCP tools. A small Go service manages human-help requests and temporary browser access.
+Claude does the work. Claudebox wakes it on a schedule and receives your Telegram messages. Mailbox and the browser expose MCP tools. A small Go service manages human-help requests and the persistent tailnet viewer.
 
 ## Quick start
 
@@ -28,6 +28,7 @@ Edit `.env` and configure:
 2. The Telegram bot token, numeric owner chat ID and numeric owner user ID.
 3. IMAP/SMTP credentials and the allowed sender address.
 4. The heartbeat schedule and prompts describing your tasks.
+5. A Tailscale or Headscale auth key and a unique `TS_HOSTNAME` for browser access.
 
 Start a conversation with the bot before deploying. Do not run another Telegram poller with the same bot token.
 
@@ -43,28 +44,28 @@ make status
 
 ## Components
 
-| Service | Responsibility |
-| --- | --- |
-| `claude` | Claude Code, heartbeat cron and owner-only Telegram |
-| `browser` | Browser MCP, screenshots, persistent profile and viewer |
-| `mailbox` | Email MCP, IMAP reading and SMTP sending |
-| `handoff` | Help requests, Telegram notifications and expiring browser tunnels |
+| Service | Project | Responsibility |
+| --- | --- | --- |
+| `claude` | [Claudebox](https://github.com/psyb0t/docker-claudebox) | Claude Code, heartbeat cron and owner-only Telegram |
+| `browser` | [Stealthy Auto-Browse](https://github.com/psyb0t/docker-stealthy-auto-browse) | Browser MCP, screenshots, persistent profile and viewer |
+| `mailbox` | [Mailbox](https://github.com/psyb0t/docker-mailbox) | Email MCP, IMAP reading and SMTP sending |
+| `handoff` | [Autonomous Stack](https://github.com/psyb0t/autonomous-stack) | Help requests, Telegram notifications and the persistent viewer proxy |
+| `tailscale` | [Tailscale](https://github.com/tailscale/tailscale) | Private browser access under a persistent tailnet node name |
 
-The helper uses [servicepack](https://github.com/psyb0t/servicepack) for its lifecycle. Claudebox owns scheduling and Telegram polling. No Docker socket, USB modem or extra Telegram client is included.
+The helper uses [servicepack](https://github.com/psyb0t/servicepack) for its lifecycle. Optional phone access uses [Dikciz Launcher](https://github.com/psyb0t/dikciz-launcher). Claudebox owns scheduling and Telegram polling. No Docker socket, USB modem or extra Telegram client is included.
 
-No ports are published on the host. Tool APIs use bearer authentication on the Compose network. The temporary tunnel exposes only an authenticated viewer, not the MCP or browser automation API.
+No ports are published on the host. Tool APIs use bearer authentication on the Compose network. Tailscale Serve exposes the browser viewer at `http://autonomous-stack` by default. Tailnet membership and ACLs control access; there is no viewer password or expiring link. Anyone permitted to reach that node can control the browser, so restrict its ACLs accordingly. The MCP and browser automation APIs are not exposed through Serve. Nothing uses Funnel or a public tunnel.
 
 ## Human help
 
-The agent can try an encountered CAPTCHA once using a screenshot. If it fails, it requests help and pauses that page.
+The agent can try an encountered CAPTCHA once using a screenshot, or use an optional owner-configured solver. Solvers default off; see [CAPTCHA settings](docs/configuration.md#optional-captcha-solver). If the selected approach fails, it requests help and pauses that page.
 
-1. Telegram receives the reason and a request ID. No tunnel opens yet.
-2. Reply `ready <request_id>` when available.
-3. The agent opens the handoff and you receive an HTTPS viewer link.
-4. Complete the task and reply `done <request_id>`.
-5. The agent closes the tunnel and checks the page before continuing.
+1. Telegram receives the reason and the stable browser URL. The agent pauses automation.
+2. Reply `ready` when available.
+3. Open `http://autonomous-stack` and complete the task.
+4. Reply `done` so the agent can inspect the page and resume.
 
-Links expire after ten minutes by default. Restarting the helper invalidates active links. Readiness depends on the agent following the owner's reply, not independent verification by the helper. See [handoff behavior](docs/handoff.md).
+The viewer stays available before, during and after help requests. No request ID needs copying, and `done` never closes browser access. Readiness depends on the agent following the owner's reply, not independent verification by the helper. See [handoff behavior](docs/handoff.md).
 
 ## Persistent data
 
@@ -77,6 +78,7 @@ Links expire after ten minutes by default. Restarting the helper invalidates act
 | `data/claudebox/` | Cron history and Telegram state |
 | `data/mailbox/` | Mailbox operation state |
 | `data/handoff/` | Current help request |
+| `data/tailscale/` | Persistent tailnet identity and Serve settings |
 
 Tracked `.gitkeep` files keep these directories present. Their runtime contents are ignored. Back up `.env`, `data/` and any external auth directory privately. Cookies and login state are credentials.
 

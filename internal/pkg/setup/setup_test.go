@@ -12,26 +12,27 @@ import (
 
 func validConfig() Config {
 	return Config{
-		TelegramChatID: 42,
-		TelegramUserID: 84,
-		TelegramToken:  "EXAMPLE-DO-NOT-USE",
-		Model:          "sonnet",
-		Effort:         "high",
-		Schedule:       "*/30 * * * *",
-		Heartbeat:      "Check tasks\nthen mail",
-		SystemPrompt:   "Owner instructions",
-		HandoffToken:   strings.Repeat("h", 32),
-		BrowserToken:   strings.Repeat("b", 32),
-		MailboxToken:   strings.Repeat("m", 32),
-		IMAPHost:       "imap.example",
-		IMAPPort:       993,
-		IMAPTLS:        "ssl",
-		SMTPHost:       "smtp.example",
-		SMTPPort:       587,
-		SMTPTLS:        "starttls",
-		MailUsername:   "me@example.com",
-		MailPassword:   "EXAMPLE-DO-NOT-USE",
-		MailFrom:       "me@example.com",
+		TailnetHostname: "autonomous-stack",
+		TelegramChatID:  42,
+		TelegramUserID:  84,
+		TelegramToken:   "EXAMPLE-DO-NOT-USE",
+		Model:           "sonnet",
+		Effort:          "high",
+		Schedule:        "*/30 * * * *",
+		Heartbeat:       "Check tasks\nthen mail",
+		SystemPrompt:    "Owner instructions",
+		HandoffToken:    strings.Repeat("h", 32),
+		BrowserToken:    strings.Repeat("b", 32),
+		MailboxToken:    strings.Repeat("m", 32),
+		IMAPHost:        "imap.example",
+		IMAPPort:        993,
+		IMAPTLS:         "ssl",
+		SMTPHost:        "smtp.example",
+		SMTPPort:        587,
+		SMTPTLS:         "starttls",
+		MailUsername:    "me@example.com",
+		MailPassword:    "EXAMPLE-DO-NOT-USE",
+		MailFrom:        "me@example.com",
 	}
 }
 
@@ -92,6 +93,7 @@ func TestGenerate(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	for _, mutate := range []func(*Config){
+		func(c *Config) { c.TailnetHostname = "invalid/name" },
 		func(c *Config) { c.TelegramChatID = 0 },
 		func(c *Config) { c.TelegramUserID = 0 },
 		func(c *Config) { c.HandoffToken = "short" },

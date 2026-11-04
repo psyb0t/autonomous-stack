@@ -26,16 +26,6 @@ type State struct {
 	Notified  bool      `json:"notified"`
 }
 
-type Process interface {
-	URL() string
-	Done() <-chan struct{}
-	Stop(context.Context) error
-}
-
-type Launcher interface {
-	Start(context.Context, string) (Process, error)
-}
-
 type Notifier interface {
 	Send(context.Context, string) error
 }

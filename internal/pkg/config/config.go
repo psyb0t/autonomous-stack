@@ -3,6 +3,7 @@ package config
 import (
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -17,22 +18,19 @@ const (
 	MaximumReasonLength = 2048
 	MaximumKeyLength    = 256
 	MaximumStateBytes   = 65536
-	CookieName          = "autonomous_handoff"
 )
 
 type Config struct {
-	ListenAddress     string        `default:"0.0.0.0:8080"               env:"AUTONOMOUS_LISTEN_ADDRESS"`
-	ViewerAddress     string        `default:"127.0.0.1:8081"             env:"AUTONOMOUS_VIEWER_ADDRESS"`
-	BrowserViewerURL  string        `default:"http://browser:5900"        env:"AUTONOMOUS_BROWSER_VIEWER_URL"`
-	StatePath         string        `default:"/state/handoff.json"        env:"AUTONOMOUS_STATE_PATH"`
-	Token             string        `env:"AUTONOMOUS_TOKEN,required"`
-	TelegramToken     string        `env:"TELEGRAM_BOT_TOKEN,required"`
-	TelegramChatID    int64         `env:"TELEGRAM_CHAT_ID,required"`
-	TelegramAPIURL    string        `default:"https://api.telegram.org"   env:"AUTONOMOUS_TELEGRAM_API_URL"`
-	CloudflaredBinary string        `default:"/usr/local/bin/cloudflared" env:"AUTONOMOUS_CLOUDFLARED_BINARY"`
-	TunnelTTL         time.Duration `default:"10m"                        env:"AUTONOMOUS_TUNNEL_TTL"`
-	StartupTimeout    time.Duration `default:"45s"                        env:"AUTONOMOUS_TUNNEL_STARTUP_TIMEOUT"`
-	RequestTTL        time.Duration `default:"24h"                        env:"AUTONOMOUS_REQUEST_TTL"`
+	ListenAddress    string        `default:"0.0.0.0:8080"             env:"AUTONOMOUS_LISTEN_ADDRESS"`
+	ViewerAddress    string        `default:"0.0.0.0:8081"             env:"AUTONOMOUS_VIEWER_ADDRESS"`
+	ViewerURL        string        `default:"http://autonomous-stack"  env:"AUTONOMOUS_VIEWER_URL"`
+	BrowserViewerURL string        `default:"http://browser:5900"      env:"AUTONOMOUS_BROWSER_VIEWER_URL"`
+	StatePath        string        `default:"/state/handoff.json"      env:"AUTONOMOUS_STATE_PATH"`
+	Token            string        `env:"AUTONOMOUS_TOKEN,required"`
+	TelegramToken    string        `env:"TELEGRAM_BOT_TOKEN,required"`
+	TelegramChatID   int64         `env:"TELEGRAM_CHAT_ID,required"`
+	TelegramAPIURL   string        `default:"https://api.telegram.org" env:"AUTONOMOUS_TELEGRAM_API_URL"`
+	RequestTTL       time.Duration `default:"24h"                      env:"AUTONOMOUS_REQUEST_TTL"`
 }
 
 func Load() (Config, error) {
@@ -71,11 +69,14 @@ func (c Config) Validate() error {
 		}
 	}
 
-	if !strings.HasPrefix(c.StatePath, "/") ||
-		!strings.HasPrefix(c.CloudflaredBinary, "/") {
+	if err := ValidateViewerURL(c.ViewerURL); err != nil {
+		return ctxerrors.Wrap(err, "invalid tailnet viewer URL")
+	}
+
+	if !strings.HasPrefix(c.StatePath, "/") {
 		return ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
-			"state and executable paths must be absolute",
+			"state path must be absolute",
 		)
 	}
 
@@ -84,8 +85,6 @@ func (c Config) Validate() error {
 
 func (c Config) validateDeadlines() error {
 	for _, bound := range []struct{ value, min, max time.Duration }{
-		{c.TunnelTTL, time.Minute, time.Hour},
-		{c.StartupTimeout, time.Second, 2 * time.Minute},
 		{c.RequestTTL, time.Minute, 7 * 24 * time.Hour},
 	} {
 		if bound.value < bound.min || bound.value > bound.max {
@@ -115,15 +114,39 @@ func (c Config) validateListeners() error {
 		}
 	}
 
-	host, _, err := net.SplitHostPort(c.ViewerAddress)
-	if err != nil {
-		return ctxerrors.Wrap(err, "parse viewer listener")
+	return nil
+}
+
+func ValidateViewerURL(raw string) error {
+	if err := ValidateURL(raw); err != nil {
+		return ctxerrors.Wrap(err, "validate viewer origin")
 	}
 
-	if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+	parsed, err := url.Parse(raw)
+	if err != nil {
 		return ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
-			"viewer must listen on loopback",
+			"invalid viewer origin",
+		)
+	}
+
+	if parsed.Path != "" && parsed.Path != "/" {
+		return ctxerrors.Wrap(
+			commerr.ErrValidationFailed,
+			"viewer URL must be an origin without a path",
+		)
+	}
+
+	return nil
+}
+
+func ValidateHostname(name string) error {
+	if len(name) > 63 ||
+		!regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$`).
+			MatchString(name) {
+		return ctxerrors.Wrap(
+			commerr.ErrValidationFailed,
+			"use a lowercase DNS label for TS_HOSTNAME",
 		)
 	}
 

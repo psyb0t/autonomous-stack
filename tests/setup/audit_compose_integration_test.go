@@ -14,6 +14,7 @@ func TestComposePolicy(t *testing.T) {
 	for _, scenario := range []string{
 		"valid", "public-port", "docker-socket", "privileged",
 		"capability", "writable-root", "missing-health", "unpinned-image",
+		"invalid-tmpfs",
 	} {
 		t.Run(scenario, func(t *testing.T) {
 			service := map[string]any{
@@ -49,6 +50,8 @@ func TestComposePolicy(t *testing.T) {
 				delete(service, "healthcheck")
 			case "unpinned-image":
 				service["image"] = "outside/image:latest"
+			case "invalid-tmpfs":
+				service["tmpfs"] = []string{"/tmp:size=64m", "noexec", "nosuid"}
 			}
 
 			data, err := json.Marshal(map[string]any{

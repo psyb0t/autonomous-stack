@@ -51,7 +51,6 @@ func (s *Service) Run(ctx context.Context) error {
 
 	manager, err := handoff.New(
 		s.cfg,
-		handoff.Cloudflared{Binary: s.cfg.CloudflaredBinary},
 		handoff.NewTelegram(
 			s.cfg.TelegramAPIURL,
 			s.cfg.TelegramToken,
@@ -62,13 +61,12 @@ func (s *Service) Run(ctx context.Context) error {
 		return ctxerrors.Wrap(err, "initialize handoff service")
 	}
 
-	defer func() {
-		if err := manager.Close(context.WithoutCancel(ctx)); err != nil {
-			ctxscope.GetLogger(ctx).Error("handoff cleanup failed", "err", err)
-		}
-	}()
+	defer closeManager(context.WithoutCancel(ctx), manager)
 
-	viewer, err := server.Viewer(manager, s.cfg.BrowserViewerURL)
+	viewer, err := server.Viewer(
+		s.cfg.BrowserViewerURL,
+		s.cfg.ViewerURL,
+	)
 	if err != nil {
 		return ctxerrors.Wrap(err, "initialize viewer proxy")
 	}
@@ -101,6 +99,12 @@ func (s *Service) Run(ctx context.Context) error {
 		Info("handoff service started", "listen_address", s.cfg.ListenAddress)
 
 	return watch(ctx, cancel, manager, results)
+}
+
+func closeManager(ctx context.Context, manager *handoff.Manager) {
+	if err := manager.Close(ctx); err != nil {
+		ctxscope.GetLogger(ctx).Error("handoff cleanup failed", "err", err)
+	}
 }
 
 func watch(
