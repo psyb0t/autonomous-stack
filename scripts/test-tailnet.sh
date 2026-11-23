@@ -31,10 +31,13 @@ trap 'log ERROR "Tailnet test failed at line $LINENO"' ERR
 	exit 2
 }
 readonly headscale_image=headscale/headscale:0.29.6@sha256:cabe84f0699913dbca9320f0883dca7565dd08df3c5be29edfabbebeff763966
-tailscale_image=$(docker compose config --format json | jq -r '.services.tailscale.image')
+compose_model=$(docker compose --env-file .env.example --profile tailscale --profile handoff config --no-env-resolution --format json)
+tailscale_image=$(jq -r '.services.tailscale.image' <<<"$compose_model")
 readonly tailscale_image
 readonly token=EXAMPLE-DO-NOT-USE-0123456789-TEST-TOKEN
 mkdir -p "$fixture/controller" "$fixture/server" "$fixture/client" "$fixture/handoff" "$fixture/browser"
+socket=$(jq -er '.services.tailscale.environment.TS_SOCKET' <<<"$compose_model")
+mapfile -t serve_command < <(jq -r '.services["tailscale-serve"].command[]' <<<"$compose_model")
 docker run --rm --network none --user "$(id -u):$(id -g)" -e HOME=/tmp \
 	-v "$root:$root" -w "$root" autonomous-stack-dev \
 	go run -mod=vendor ./tests/testinfra/telegram --certificates "$fixture/controller"
@@ -80,11 +83,13 @@ docker run --rm -d --name "$prefix-handoff" --network "$prefix" --network-alias 
 	-v "$fixture/handoff:/state" -e SERVICES_ENABLED=handoff -e ENV=prod -e LOG_FORMAT=json \
 	-e "AUTONOMOUS_TOKEN=$token" -e TELEGRAM_BOT_TOKEN=EXAMPLE-DO-NOT-USE -e TELEGRAM_CHAT_ID=42 \
 	-e AUTONOMOUS_TELEGRAM_API_URL=http://telegram:8089 \
-	psyb0t/autonomous-stack:latest run >/dev/null
+	"${STACK_TEST_IMAGE:?Use make test-tailnet}" run >/dev/null
 names+=("$prefix-handoff")
 for role in server client; do
 	hostname=autonomous-stack
-	[[ "$role" == server ]] || hostname='fixture-client'
+	if [[ "$role" == client ]]; then
+		hostname='fixture-client'
+	fi
 	docker run --rm -d --name "$prefix-$role" --network "$prefix" --init \
 		--user "$(id -u):$(id -g)" --cap-drop ALL --read-only \
 		--tmpfs /tmp:size=64m --tmpfs /var/run:size=8m,mode=1777 \
@@ -95,6 +100,7 @@ for role in server client; do
 		-e TS_SOCKS5_SERVER=0.0.0.0:1055 \
 		-e 'TS_EXTRA_ARGS=--accept-dns=false --login-server=https://headscale:8080' \
 		-e TS_ENABLE_HEALTH_CHECK=true -e TS_LOCAL_ADDR_PORT=127.0.0.1:9002 \
+		-e "TS_SOCKET=$socket" \
 		"$tailscale_image" >/dev/null
 	names+=("$prefix-$role")
 	ready=false
@@ -123,7 +129,9 @@ done
 	log ERROR 'Notification or browser fixture failed readiness.'
 	exit 1
 }
-docker exec "$prefix-server" tailscale serve --bg --yes --http=80 http://handoff:8081 >"$fixture/serve.log"
+docker run --rm --network none --read-only --cap-drop ALL \
+	--user "$(id -u):$(id -g)" -v "$fixture/server:/var/lib/tailscale:ro" \
+	--entrypoint tailscale "$tailscale_image" "--socket=$socket" "${serve_command[@]}" >"$fixture/serve.log"
 tail_request() {
 	docker exec "$prefix-telegram" curl -sS -i --max-time 20 \
 		--retry 5 --retry-all-errors --retry-delay 1 \
@@ -159,7 +167,7 @@ grep -qi 'novnc' "$fixture/viewer.http"
 mcp_call "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"finish_handoff\",\"arguments\":{\"request_id\":\"$request_id\"}}}" >"$fixture/finish.json"
 tail_request /vnc.html >"$fixture/after.http"
 grep -q '200 OK' "$fixture/after.http"
-node_id=$(docker exec "$prefix-server" tailscale status --json | jq -r '.Self.ID')
+node_id=$(docker exec "$prefix-server" tailscale "--socket=$socket" status --json | jq -r '.Self.ID')
 docker restart "$prefix-server" >/dev/null
 ready=false
 for ((attempt = 0; attempt < 60; attempt += 1)); do
@@ -173,7 +181,7 @@ done
 	log ERROR 'Restarted sidecar failed readiness.'
 	exit 1
 }
-[[ "$node_id" == "$(docker exec "$prefix-server" tailscale status --json | jq -r '.Self.ID')" ]]
+[[ "$node_id" == "$(docker exec "$prefix-server" tailscale "--socket=$socket" status --json | jq -r '.Self.ID')" ]]
 tail_request /vnc.html >"$fixture/restarted.http"
 grep -q '200 OK' "$fixture/restarted.http"
 log INFO 'Persistent tailnet viewer passed before and after handoff completion and sidecar restart.'

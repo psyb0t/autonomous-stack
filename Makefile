@@ -41,40 +41,38 @@ inspect-registration: dev-image
 	@$(DEV_RUN) go tool gofindimpl -interface internal/pkg/service-manager/service_manager.go:Service -dir internal/pkg/services
 
 .PHONY: init setup up restart stop down status logs pull image check-compose
+AUTONOMOUS_IMAGE ?= psyb0t/autonomous-stack:latest
+TEST_IMAGE ?= autonomous-stack-test:local
 init: ## Create .env with generated internal tokens, without replacing an existing file
 	@bash scripts/init.sh
-image: init ## Build the handoff and setup image locally
-	@docker compose build handoff prepare
-setup: image ## Validate .env and regenerate private runtime configuration
-	@docker compose --profile tools run --rm --no-deps prepare
-up: setup ## Prepare configuration and start the stack
+image: ## Build the Go image for local development
+	@docker build --tag "$(AUTONOMOUS_IMAGE)" .
+setup: ## Regenerate private configuration for the selected profiles
+	@docker compose run --rm --no-deps prepare
+up: ## Start the selected Compose services
 	@docker compose up -d
-	@$(MAKE) tailnet
-restart: setup ## Rebuild, regenerate configuration and recreate services
-	@docker compose up -d --force-recreate
-	@$(MAKE) tailnet
+restart: ## Recreate selected services and remove disabled containers, preserving data
+	@docker compose --profile '*' down
+	@docker compose up -d
 stop: ## Stop the stack without removing data
-	@docker compose stop
+	@docker compose --profile '*' stop
 down: ## Remove this stack's containers and network, preserving all data
-	@docker compose down
+	@docker compose --profile '*' down
 status: ## Show stack health
 	@docker compose ps
 logs: ## Follow stack logs
 	@docker compose logs --tail=100 -f
-pull: ## Refresh first-party service images
-	@docker compose pull claude browser mailbox tailscale
+pull: ## Pull images for the selected profiles
+	@docker compose pull
 check-compose: ## Validate the deployment model without printing secrets
 	@docker compose config --quiet
 
-.PHONY: tailnet
-tailnet: ## Wait for tailnet login and expose only the tailnet-protected viewer
-	@docker compose up -d --wait --wait-timeout 120 tailscale
-	@docker compose exec -T tailscale tailscale serve --bg --yes --http=80 http://handoff:8081
-
-.PHONY: test-runtime
-test-runtime: image test-captcha-config test-notify ## Test helper, browser and Mailbox with isolated offline-account fixtures
+.PHONY: test-image test-runtime
+test-image:
+	@docker build --tag "$(TEST_IMAGE)" .
+test-runtime: test-image test-captcha-config test-notify ## Test helper, browser and Mailbox with isolated offline-account fixtures
 	@mkdir -p .testing
-	@bash scripts/test-runtime.sh
+	@STACK_TEST_IMAGE="$(TEST_IMAGE)" bash scripts/test-runtime.sh
 
 .PHONY: test-captcha-config
 test-captcha-config: dev-image ## Check optional CAPTCHA settings in the rendered deployment
@@ -85,12 +83,12 @@ test-notify: dev-image ## Test send-only Telegram progress updates without conta
 	@$(DEV_RUN) python3 -m unittest discover -s scripts -p 'test_telegram_notify.py' -v
 
 .PHONY: test-tailnet
-test-tailnet: image dev-image ## Test private browser access on an isolated Headscale network
+test-tailnet: test-image dev-image ## Test private browser access on an isolated Headscale network
 	@mkdir -p .testing
-	@bash scripts/test-tailnet.sh
+	@STACK_TEST_IMAGE="$(TEST_IMAGE)" bash scripts/test-tailnet.sh
 
 .PHONY: audit-compose
 audit-compose: dev-image ## Check rendered deployment policy and documented bootstrap exceptions
 	@umask 077; file=$$(mktemp .cache/compose.XXXXXX); trap 'rm -f "$$file"' EXIT; \
-		docker compose config --format json >"$$file"; \
+		docker compose --env-file .env.example --profile '*' config --no-env-resolution --format json >"$$file"; \
 		$(DEV_RUN) bash scripts/audit-compose.sh "/work/$$file"

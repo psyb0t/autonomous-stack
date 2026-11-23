@@ -16,7 +16,7 @@ No host ports are published. Do not attach unrelated containers to this Compose 
 
 The helper, Mailbox and Tailscale sidecar run non-root with no capabilities and read-only roots. Each has only its required writable state and temporary storage.
 
-Browser and Claudebox have writable roots and narrow bootstrap capabilities. Browser fixes profile ownership before dropping privileges. Claudebox installs the supported Claude CLI, matches UID/GID and drops privileges. These exceptions are required by the upstream entrypoints. No container receives the Docker socket, host devices or the whole home directory.
+Browser and Claudebox have writable roots and narrow bootstrap capabilities. Browser fixes profile ownership before dropping privileges. Claudebox installs the supported Claude CLI, matches UID/GID and drops privileges. The optional ModemBox service receives the selected host serial device.
 
 The selected Claude auth directory is writable for refresh. Mounting an existing auth directory shares those credentials with the container. Use a dedicated token or repo-local directory if that sharing is unwanted.
 
@@ -24,7 +24,7 @@ Root and Docker-group users can inspect container credentials. `.env` permission
 
 ## Operation
 
-`make status` tells you what's up. `make logs` follows the logs. Use `make pull` to grab fresh images and `make restart` to rebuild the helper, check settings and recreate the services. Use `make stop` when you want the stack quiet. Back up state and check the upstream release notes before updating.
+`make status` shows service health. `make logs` follows the logs. Use `make pull` to grab fresh images and `make restart` to recreate the selected services. Use `make stop` to stop the stack. Back up state and check the upstream release notes before updating.
 
 Claudebox has no readiness endpoint in Telegram mode. Its healthcheck checks the native bot process, which also starts the cron scheduler in a thread. It does not prove an external Telegram connection or Claude authentication. Check an owner message and a heartbeat after initial deployment.
 
@@ -34,6 +34,6 @@ Claude has unattended tool access. Use dedicated accounts, approve a narrow task
 
 Missing Telegram/mail configuration is rejected by setup. Start the bot chat before deploying and stop other pollers using that token. The Claudebox container must be able to reach any configured Dikciz, ModemBox or KeePassBox endpoint, including through any required VPN routes.
 
-A sidecar login or Serve failure stops `make up` with an error. Check `make logs`, tailnet key validity and control-server reachability. Notification failure affects help coordination, not viewer access. Finish a broken help request and inspect health rather than exposing raw viewer ports.
+If the viewer isn't reachable, check `make status`, the Tailscale logs, tailnet key validity and control-server reachability. A Telegram notification failure can leave a pending help request. Inspect it through the handoff tools.
 
 The sidecar has its own tailnet identity and does not change the host's Tailscale login. Userspace networking is sufficient because it only accepts incoming viewer connections. Other stack containers do not automatically use the sidecar for outgoing tailnet traffic. Keep `data/tailscale/` in private backups; `make down` preserves it. Restrict its node's port 80 to the intended owner through tailnet ACLs.

@@ -2,6 +2,7 @@ package setup
 
 import (
 	"regexp"
+	"strings"
 
 	"github.com/psyb0t/autonomous-stack/internal/pkg/config"
 	"github.com/psyb0t/ctxerrors"
@@ -22,45 +23,77 @@ var (
 type externalMCPService struct {
 	name        string
 	url         string
+	localURL    string
 	token       string
 	minTokenLen int
 }
 
-func (c Config) externalMCPServices() []externalMCPService {
-	return []externalMCPService{
+func (c Config) mcpServices() []externalMCPService {
+	services := []externalMCPService{
+		{
+			"browser", c.BrowserURL, "http://browser:8080/mcp",
+			c.BrowserToken, config.MinimumTokenLength,
+		},
+		{
+			"mailbox", c.MailboxURL, "http://mailbox:8000/mcp",
+			c.MailboxToken, config.MinimumTokenLength,
+		},
+		{
+			"handoff", c.HandoffURL, "http://handoff:8080/mcp",
+			c.HandoffToken, config.MinimumTokenLength,
+		},
 		{
 			name:        "modembox",
 			url:         c.ModemBoxURL,
+			localURL:    "http://modembox:8000/mcp",
 			token:       c.ModemBoxToken,
 			minTokenLen: minimumModemBoxTokenLength,
 		},
 		{
 			name:        "keepassbox",
 			url:         c.KeePassBoxURL,
+			localURL:    "http://keepassbox:8000/mcp",
 			token:       c.KeePassBoxToken,
 			minTokenLen: minimumKeePassBoxTokenLength,
 		},
 	}
+	for index := range services {
+		if !c.local(services[index].name) {
+			services[index].localURL = ""
+		}
+	}
+
+	return services
+}
+
+func (service externalMCPService) endpoint() string {
+	if service.localURL != "" {
+		return service.localURL
+	}
+
+	return service.url
 }
 
 func (service externalMCPService) validate() error {
-	if service.url == "" && service.token == "" {
-		return nil
-	}
-
-	if service.url == "" || service.token == "" {
+	if service.localURL != "" && service.url != "" {
 		return ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
-			service.name+" MCP URL and token must be set together",
+			"disable the "+service.name+" profile to use a remote MCP URL",
 		)
 	}
 
-	if err := config.ValidateURL(service.url); err != nil {
+	endpoint := service.endpoint()
+	if endpoint == "" {
+		return nil
+	}
+
+	if err := config.ValidateURL(endpoint); err != nil {
 		return ctxerrors.Wrap(err, "invalid "+service.name+" MCP URL")
 	}
 
 	if len(service.token) < service.minTokenLen ||
 		len(service.token) > maximumExternalTokenLength ||
+		strings.HasPrefix(service.token, "REPLACE_ME") ||
 		!externalTokenPattern.MatchString(service.token) {
 		return ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
@@ -72,14 +105,14 @@ func (service externalMCPService) validate() error {
 }
 
 func (c Config) validateExternalMCP() error {
-	for _, service := range c.externalMCPServices() {
+	for _, service := range c.mcpServices() {
 		if err := service.validate(); err != nil {
 			return err
 		}
 	}
 
-	if c.ModemBoxModemID != "" &&
-		(c.ModemBoxURL == "" || c.PhoneNumber == "" ||
+	if c.ModemBoxModemID != "" && (c.Profiles == "" || c.modemConfigured()) &&
+		(!c.modemConfigured() || c.PhoneNumber == "" ||
 			!modemIDPattern.MatchString(c.ModemBoxModemID)) {
 		return ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
@@ -88,4 +121,8 @@ func (c Config) validateExternalMCP() error {
 	}
 
 	return nil
+}
+
+func (c Config) modemConfigured() bool {
+	return c.ModemBoxURL != "" || c.local("modembox")
 }

@@ -1,8 +1,13 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 (2026-11-23)
 
+- Use the published Go image by default. Select local services with Compose profiles, or point the agent at remote browser, Mailbox, handoff, ModemBox and KeePassBox endpoints.
+- For an existing install, add `COMPOSE_PROFILES=claude,browser,mailbox,handoff,tailscale` to `.env` to keep the original service selection. Then pull the new images and run `make restart`.
+- Apply the private viewer's Tailscale Serve configuration at container startup.
+- Build and test with Go 1.26.11 to pick up the HTTP security fix.
 - Rewrite the README and operator guides around setup, browser handoffs and optional MCP connections.
+- Include the agent identity setup, verification SMS, vault credentials and TOTP, and OS-level browser input from v0.3.0. Existing local account records stay in place.
 
 ## v0.3.0 (2026-11-23)
 

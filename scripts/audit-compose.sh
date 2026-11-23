@@ -17,16 +17,26 @@ jq -e '
     test("@sha256:[a-f0-9]{64}$");
   [.services | to_entries[] |
     .key as $name | .value as $s |
-    if $name == "prepare" then
+    if $name == "prepare" or $name == "tailscale-serve" then
       ($s.network_mode == "none" and $s.read_only == true and
-       ($s.cap_drop | index("ALL")) != null)
+       ($s.cap_drop | index("ALL")) != null and
+       ($s.security_opt | index("no-new-privileges:true")) != null and
+       ($s.image | image_ok))
     else
       (($s.image | image_ok) and
        $s.init == true and
        ($s.cap_drop | index("ALL")) != null and
        ($s.security_opt | index("no-new-privileges:true")) != null and
        $s.privileged != true and $s.network_mode != "host" and
-       ($s.devices // [] | length) == 0 and $s.networks != null and
+       $s.networks != null and
+       ($s.device_cgroup_rules // [] | length) == 0 and
+       (if $name == "modembox" then
+          ($s.devices | length) > 0 and
+          all($s.devices[]; .source == .target and
+            (.source | test("^/dev/ttyUSB[0-9]+$")) and .permissions == "rw")
+        else
+          ($s.devices // [] | length) == 0
+        end) and
        $s.pid != "host" and $s.ipc != "host" and
        ($s.mem_limit | tonumber) > 0 and ($s.cpus | tonumber) > 0 and
        $s.pids_limit > 0 and $s.healthcheck.test != null and
@@ -37,7 +47,7 @@ jq -e '
        all($s.ports[]?; .host_ip == "127.0.0.1" or .host_ip == "::1") and
        all($s.volumes[]?;
          .type != "bind" or
-         ((.source | test("(^/$|^/etc$|^/var$|^/root$|^/home(/[^/]+)?$|docker.sock$)")) | not)) and
+         ((.source | test("(^/$|^/dev(/|$)|^/etc$|^/var$|^/root$|^/home(/[^/]+)?$|docker.sock$)")) | not)) and
        (if $name == "browser" or $name == "claude" then
           ($s.cap_add | sort) == ["CHOWN","DAC_OVERRIDE","FOWNER","SETGID","SETUID"]
         else

@@ -25,17 +25,18 @@ cleanup() {
 }
 trap cleanup EXIT
 trap 'log ERROR "Runtime test failed at line $LINENO"' ERR
-mkdir -p "$fixture_root/config/generated" "$fixture_root/data/workspace" "$fixture_root/data/mailbox" "$fixture_root/data/handoff" "$fixture_root/data/browser"
+mkdir -p "$fixture_root/config/generated" "$fixture_root/config/mailbox" "$fixture_root/data/workspace" "$fixture_root/data/mailbox" "$fixture_root/data/handoff" "$fixture_root/data/browser"
 readonly fixture_token=EXAMPLE-DO-NOT-USE-0123456789-TEST-TOKEN
 docker run --rm --name "$prefix-prepare" --user "$(id -u):$(id -g)" --network none \
 	--cap-drop ALL --read-only --security-opt no-new-privileges:true \
 	-v "$fixture_root:/stack" \
+	-e STACK_PROFILES=claude,browser,mailbox,handoff \
 	-e TELEGRAM_BOT_TOKEN=EXAMPLE-DO-NOT-USE -e TELEGRAM_CHAT_ID=42 -e TELEGRAM_USER_ID=84 \
 	-e "AUTONOMOUS_TOKEN=$fixture_token" -e "BROWSER_TOKEN=$fixture_token" -e "MAILBOX_TOKEN=$fixture_token" \
 	-e HEARTBEAT_PROMPT='Check fixture tasks' -e AGENT_PROMPT='Test fixture only' \
 	-e MAIL_IMAP_HOST=imap.example.com -e MAIL_SMTP_HOST=smtp.example.com \
 	-e MAIL_USERNAME=fixture@example.com -e MAIL_PASSWORD=EXAMPLE-DO-NOT-USE -e MAIL_FROM=fixture@example.com \
-	psyb0t/autonomous-stack:latest prepare
+	"${STACK_TEST_IMAGE:?Use make test-runtime}" prepare
 docker network create "$prefix" >/dev/null
 network_created=true
 docker run --rm -d --name "$prefix-browser" --network "$prefix" --network-alias browser \
@@ -50,7 +51,7 @@ docker run --rm -d --name "$prefix-mailbox" --network "$prefix" --network-alias 
 	--init --user "$(id -u):$(id -g)" --read-only --cap-drop ALL \
 	--memory 512m --cpus 1 --pids-limit 128 --security-opt no-new-privileges:true \
 	--log-opt max-size=10m --log-opt max-file=2 --tmpfs /tmp:size=64m,noexec,nosuid \
-	-v "$fixture_root/config/generated/mailbox.yml:/etc/mailboxd/config.yaml:ro" \
+	-v "$fixture_root/config/mailbox:/etc/mailboxd:ro" \
 	-v "$fixture_root/data/mailbox:/var/lib/mailboxd" \
 	-e MAILBOXD_CONFIG=/etc/mailboxd/config.yaml -e "MAILBOX_TOKEN=$fixture_token" \
 	-e MAIL_USERNAME=fixture@example.com -e MAIL_PASSWORD=EXAMPLE-DO-NOT-USE \
@@ -63,7 +64,7 @@ docker run --rm -d --name "$prefix-handoff" --network "$prefix" --network-alias 
 	-v "$fixture_root/data/handoff:/state" \
 	-e SERVICES_ENABLED=handoff -e ENV=prod -e LOG_LEVEL=info -e LOG_FORMAT=json \
 	-e "AUTONOMOUS_TOKEN=$fixture_token" -e TELEGRAM_BOT_TOKEN=EXAMPLE-DO-NOT-USE -e TELEGRAM_CHAT_ID=42 \
-	psyb0t/autonomous-stack:latest run >/dev/null
+	"${STACK_TEST_IMAGE:?Use make test-runtime}" run >/dev/null
 names+=("$prefix-handoff")
 ready=false
 for ((attempt = 0; attempt < 60; attempt += 1)); do

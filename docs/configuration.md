@@ -2,7 +2,27 @@
 
 Run `make init` and fill in `.env`. Compose reads this file as dotenv. Quote spaces, multiline prompts, `#` and `$` as needed. Use single quotes when you want a dollar sign to stay a dollar sign. Keep untrusted dotenv files out of your shell.
 
-`make setup` writes private config under `config/generated/` and MCP settings into the workspace. All those files are mode 0600. The `.yml` files contain JSON, which YAML accepts. Make your changes in `.env` so they survive the next setup run.
+Compose runs `prepare` before starting Claudebox, local Mailbox or local KeePassBox. It writes only the selected services' configuration, including the agent's MCP settings. Generated files use mode 0600. Use `make setup` to run that step on its own.
+
+## Local and remote services
+
+List the local containers you want in `COMPOSE_PROFILES`. This is the default for a fresh install and the setting to add to an existing `.env` to keep the original stack:
+
+```dotenv
+COMPOSE_PROFILES=claude,browser,mailbox,handoff,tailscale
+```
+
+Add `modembox` or `keepassbox` to run either locally. To use a service that already runs elsewhere, remove its profile and set its remote URL, including `/mcp`, and the token issued by that service. With the profile and URL both absent, Claude skips the integration. Use the `.env` setting to select profiles so the containers and generated MCP config agree.
+
+| Local profile | Remote URL | Token |
+| --- | --- | --- |
+| `browser` | `BROWSER_MCP_URL` | `BROWSER_TOKEN` |
+| `mailbox` | `MAILBOX_MCP_URL` | `MAILBOX_TOKEN` |
+| `handoff` | `HANDOFF_MCP_URL` | `AUTONOMOUS_TOKEN` |
+| `modembox` | `MODEMBOX_MCP_URL` | `MODEMBOX_TOKEN` |
+| `keepassbox` | `KEEPASSBOX_MCP_URL` | `KEEPASSBOX_TOKEN` |
+
+For an external Mailbox, set `MAIL_FROM` if the agent should have an approved email identity. IMAP and SMTP settings are needed only for local Mailbox. A local handoff service can use a remote browser viewer via `AUTONOMOUS_BROWSER_VIEWER_URL`. Set `AUTONOMOUS_VIEWER_URL` to the private address the owner should open if you're providing your own viewer ingress. The `tailscale` profile requires `handoff`.
 
 ## Claude
 
@@ -36,21 +56,25 @@ Set both `DIKCIZ_MCP_URL` and `DIKCIZ_API_KEY` to add a [Dikciz Launcher](https:
 
 ### ModemBox
 
-Run ModemBox on the machine with the USB stick. Set `MODEMBOX_MCP_URL` to that instance's full MCP URL, including `/mcp`, and `MODEMBOX_TOKEN` to its operator token. The Claude container needs to reach it over HTTPS or an isolated trusted network. An operator token can use every feature on that instance, so give the agent a dedicated instance or SIM. Leave both settings empty to skip ModemBox. See the [ModemBox MCP guide](https://psyb0t.github.io/docker-modembox/mcp/).
+For local ModemBox, add its profile, set `MODEMBOX_DEVICE` to the host modem's control port, and set `MODEMBOX_DEVICE_GID` to the device's group ID. Compose passes through only that serial device. For a known Huawei layout, select the port for USB interface `02`. To add voice, map the audio port at the same path inside the container with a Compose override. Recreate the container if the USB device path changes. The standalone ModemBox install can manage discovery across multiple modems and serve this stack remotely.
+
+For a remote ModemBox, set `MODEMBOX_MCP_URL` to that instance's full MCP URL, including `/mcp`, and `MODEMBOX_TOKEN` to its operator token. The Claude container needs to reach it over HTTPS or an isolated trusted network. An operator token can use every feature on that instance, so give the agent a dedicated instance or SIM. Leave both settings empty to skip ModemBox. See the [ModemBox MCP guide](https://psyb0t.github.io/docker-modembox/mcp/).
 
 For SMS verification, set `MODEMBOX_MODEM_ID` to the device ID from ModemBox that you have confirmed serves `AUTONOMOUS_PHONE_NUMBER`. Setup records the mapping as `modembox_modem_id` in the generated identity. Update it if you change the SIM. Both Dikciz and ModemBox can be configured, and the agent uses the mapping to select the right inbox.
 
 ## KeePassBox
 
-Give the agent its own KeePassBox vault. Set `KEEPASSBOX_MCP_URL` to the instance's full MCP URL, including `/mcp`, and `KEEPASSBOX_TOKEN` to its bearer token. Grant entry read and write access, plus secret access if the agent needs passwords or TOTP codes. Claude needs to reach the vault over HTTPS or an isolated trusted network before it can submit a signup. Leave both settings empty to skip KeePassBox. See the [KeePassBox MCP guide](https://psyb0t.github.io/docker-keepassbox/mcp/).
+For local KeePassBox, add its profile and supply `KEEPASSBOX_TOKEN`. Setup writes the private access definition for the `automation` owner. Vaults persist in `data/keepassbox/`.
 
-These connections use existing services. Run `make restart` after changing either endpoint or token so setup regenerates the private MCP configuration.
+For a remote KeePassBox, give the agent its own vault and set `KEEPASSBOX_MCP_URL` to the instance's full MCP URL, including `/mcp`, and `KEEPASSBOX_TOKEN` to its bearer token. Grant entry read and write access, plus secret access if the agent needs passwords or TOTP codes. Claude needs to reach the vault over HTTPS or an isolated trusted network before it can submit a signup. Leave both settings empty to skip KeePassBox. See the [KeePassBox MCP guide](https://psyb0t.github.io/docker-keepassbox/mcp/).
+
+Run `make restart` after changing a profile, endpoint or token so Compose replaces the containers and regenerates the MCP configuration.
 
 ## Agent identity and account passwords
 
 Set `AUTONOMOUS_PHONE_NUMBER` to the owner-approved verification number in E.164 format, including its leading `+` and no spaces. Leave it empty to require an owner decision before phone verification. This selects an identity; it does not change Android's default SIM or grant phone permissions. The agent must confirm the matching subscription or ask when the device cannot distinguish numbers.
 
-Setup writes `/config/identity.json` for the agent with `MAIL_FROM`, the selected phone number and the mailbox login. The host file is `config/generated/identity.json`, mode 0600. Real values stay out of reusable prompts. Mailbox MCP remains the normal mail interface.
+Setup writes `/config/identity.json` for the agent with `MAIL_FROM`, the selected phone number and the local mailbox login when the `mailbox` profile is active. The host file is `config/generated/identity.json`, mode 0600. Real values stay out of reusable prompts. Mailbox MCP remains the normal mail interface.
 
 With KeePassBox configured, the agent stores new account credentials in the approved vault. Without it, credentials go in `/workspace/agent/private/passwords.json`, backed by `data/workspace/agent/private/passwords.json` here. Setup creates an empty mode-0600 file in a mode-0700 directory and preserves existing entries. It rejects unsafe permissions, directories and symbolic links at the password-file path. Existing local entries stay where they are until the owner moves them. The local password file and generated identity contain plaintext secrets. Both are ignored by Git and excluded from image builds.
 
@@ -58,7 +82,7 @@ Verification instructions restrict the agent to relevant recent messages for the
 
 ## Internal services
 
-`AUTONOMOUS_TOKEN`, `BROWSER_TOKEN`, `MAILBOX_TOKEN` are distinct bearer credentials generated by `make init`, each at least 32 characters. Rotation requires `make restart` to update callers and services together.
+`make init` generates distinct tokens for handoff, the browser, Mailbox, ModemBox and KeePassBox. On an existing install, fill in any new local service token before enabling its profile. Rotate local tokens with `make restart` so callers and services get the change together.
 
 `AUTONOMOUS_REQUEST_TTL` defaults to `24h` and permits one minute through seven days. It expires pending help requests, not browser access. Active assistance remains active until the owner finishes, including across helper restarts.
 
@@ -90,7 +114,7 @@ Keys are forwarded only to the browser, not Claude or the helper. Keep them in t
 
 See the upstream [Docker configuration parameters](https://tailscale.com/docs/features/containers/docker/docker-params) for Tailscale's environment-variable reference.
 
-`make up` and `make restart` wait for the sidecar to acquire a tailnet address, then apply `tailscale serve --bg --yes --http=80 http://handoff:8081`. `make tailnet` repeats that setup. It exposes only the helper's viewer listener. It does not publish MCP, raw noVNC or the browser automation API.
+Compose runs a one-shot Serve command when the Tailscale sidecar becomes healthy. It exposes the helper's viewer listener on tailnet port 80.
 
 The short-name URL uses HTTP inside encrypted WireGuard traffic, matching Headscale setups without HTTPS certificates. Tailnet membership and ACLs are the viewer's access boundary. There is no application login, cookie requirement or access expiry. Every client permitted to reach the node can control its browser. Restrict ACLs to trusted owners and never forward that listener onto a public network. Host and Origin checks remain in place.
 

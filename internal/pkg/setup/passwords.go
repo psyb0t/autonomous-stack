@@ -13,21 +13,30 @@ import (
 const privateFileMode = 0o600
 
 func prepareIdentity(cfg Config, root string) error {
-	address, err := mail.ParseAddress(cfg.MailFrom)
-	if err != nil {
-		return ctxerrors.Wrap(err, "parse agent mail identity")
+	var email string
+
+	if cfg.MailFrom != "" {
+		address, err := mail.ParseAddress(cfg.MailFrom)
+		if err != nil {
+			return ctxerrors.Wrap(err, "parse agent mail identity")
+		}
+
+		email = address.Address
 	}
 
 	identity := map[string]any{
-		"email":        address.Address,
+		"email":        email,
 		"phone_number": cfg.PhoneNumber,
-		"mailbox": map[string]string{
+	}
+	if cfg.local("mailbox") {
+		identity["mailbox"] = map[string]string{
 			"name":     "primary",
 			"username": cfg.MailUsername,
 			"password": cfg.MailPassword,
-		},
+		}
 	}
-	if cfg.ModemBoxModemID != "" {
+
+	if cfg.ModemBoxModemID != "" && cfg.modemConfigured() {
 		identity["modembox_modem_id"] = cfg.ModemBoxModemID
 	}
 

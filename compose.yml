@@ -9,14 +9,14 @@ x-common: &common
   networks: [stack]
 services:
   prepare:
-    profiles: [tools]
+    profiles: [claude, mailbox, keepassbox]
     image: ${AUTONOMOUS_IMAGE:-psyb0t/autonomous-stack:latest}
-    build: .
     command: [prepare]
     user: ${STACK_UID:-1000}:${STACK_GID:-1000}
     env_file: .env
     environment:
       SERVICES_ENABLED: ''
+      STACK_PROFILES: ${COMPOSE_PROFILES:-none}
       ENV: prod
       LOG_LEVEL: info
       # Setup reads .env but does not need the browser's solver credential.
@@ -27,12 +27,14 @@ services:
     network_mode: none
     volumes:
       - ./config/generated:/stack/config/generated
+      - ./config/mailbox:/stack/config/mailbox
       - ./data/workspace:/stack/data/workspace
+      - ./data/keepassbox:/stack/data/keepassbox
     tmpfs: ['/tmp:size=16m,noexec,nosuid']
   handoff:
     <<: *common
+    profiles: [handoff]
     image: ${AUTONOMOUS_IMAGE:-psyb0t/autonomous-stack:latest}
-    build: .
     command: [run]
     user: ${STACK_UID:-1000}:${STACK_GID:-1000}
     environment:
@@ -44,7 +46,8 @@ services:
       AUTONOMOUS_TOKEN: ${AUTONOMOUS_TOKEN:-}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      AUTONOMOUS_VIEWER_URL: http://${TS_HOSTNAME:-autonomous-stack}
+      AUTONOMOUS_VIEWER_URL: ${AUTONOMOUS_VIEWER_URL:-http://${TS_HOSTNAME:-autonomous-stack}}
+      AUTONOMOUS_BROWSER_VIEWER_URL: ${AUTONOMOUS_BROWSER_VIEWER_URL:-http://browser:5900}
       AUTONOMOUS_REQUEST_TTL: ${AUTONOMOUS_REQUEST_TTL:-24h}
     cap_drop: [ALL]
     read_only: true
@@ -54,7 +57,7 @@ services:
     tmpfs: ['/tmp:size=64m,noexec,nosuid']
     volumes: [./data/handoff:/state]
     depends_on:
-      browser: {condition: service_healthy}
+      browser: {condition: service_healthy, required: false}
     healthcheck:
       test: [CMD, ./app, healthcheck]
       interval: 10s
@@ -63,7 +66,8 @@ services:
       start_period: 15s
   tailscale:
     <<: *common
-    image: tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
+    profiles: [tailscale]
+    image: &tailscale_image tailscale/tailscale:v1.104.4@sha256:ed6480b33c6eb67c9cbd203ed42b9fb57e361986725b6856def71b7a3d9e276c
     user: ${STACK_UID:-1000}:${STACK_GID:-1000}
     environment:
       TS_AUTHKEY: ${TS_AUTHKEY:-}
@@ -73,6 +77,7 @@ services:
       TS_USERSPACE: 'true'
       TS_EXTRA_ARGS: ${TS_EXTRA_ARGS:---accept-dns=false}
       TS_ENABLE_HEALTH_CHECK: 'true'
+      TS_SOCKET: /var/lib/tailscale/tailscaled.sock
       TS_LOCAL_ADDR_PORT: 127.0.0.1:9002
     cap_drop: [ALL]
     read_only: true
@@ -89,8 +94,22 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
+  tailscale-serve:
+    profiles: [tailscale]
+    image: *tailscale_image
+    user: ${STACK_UID:-1000}:${STACK_GID:-1000}
+    entrypoint: [tailscale, --socket=/var/lib/tailscale/tailscaled.sock]
+    command: [serve, --bg, --yes, --http=80, 'http://handoff:8081']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    network_mode: none
+    volumes: [./data/tailscale:/var/lib/tailscale:ro]
+    depends_on:
+      tailscale: {condition: service_healthy}
   mailbox:
     <<: *common
+    profiles: [mailbox]
     image: psyb0t/mailbox:latest
     user: ${STACK_UID:-1000}:${STACK_GID:-1000}
     environment:
@@ -106,8 +125,10 @@ services:
     pids_limit: 128
     tmpfs: ['/tmp:size=64m,noexec,nosuid']
     volumes:
-      - ./config/generated/mailbox.yml:/etc/mailboxd/config.yaml:ro
+      - ./config/mailbox:/etc/mailboxd:ro
       - ./data/mailbox:/var/lib/mailboxd
+    depends_on:
+      prepare: {condition: service_completed_successfully}
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)"]
       interval: 10s
@@ -116,6 +137,7 @@ services:
       start_period: 30s
   browser:
     <<: *common
+    profiles: [browser]
     image: psyb0t/stealthy-auto-browse:latest
     environment:
       AUTH_TOKEN: ${BROWSER_TOKEN:-}
@@ -145,6 +167,7 @@ services:
       start_period: 90s
   claude:
     <<: *common
+    profiles: [claude]
     image: psyb0t/claudebox:latest
     environment:
       CLAUDEBOX_CRON_MODE: '1'
@@ -181,9 +204,52 @@ services:
         target: /claude-auth
         bind: {create_host_path: false}
     depends_on:
-      mailbox: {condition: service_healthy}
-      browser: {condition: service_healthy}
-      handoff: {condition: service_healthy}
+      prepare: {condition: service_completed_successfully}
+      mailbox: {condition: service_healthy, required: false}
+      browser: {condition: service_healthy, required: false}
+      handoff: {condition: service_healthy, required: false}
+      modembox: {condition: service_healthy, required: false}
+      keepassbox: {condition: service_healthy, required: false}
+  modembox:
+    <<: *common
+    profiles: [modembox]
+    image: psyb0t/modembox:latest
+    user: ${STACK_UID:-1000}:${STACK_GID:-1000}
+    environment:
+      MODEMBOX_TOKEN: ${MODEMBOX_TOKEN:-}
+    read_only: true
+    cap_drop: [ALL]
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    tmpfs: ['/tmp:size=64m,noexec,nosuid']
+    devices:
+      - ${MODEMBOX_DEVICE:-/dev/ttyUSB0}:${MODEMBOX_DEVICE:-/dev/ttyUSB0}:rw
+    group_add: ["${MODEMBOX_DEVICE_GID:-20}"]
+    volumes: [./data/modembox:/data]
+    healthcheck: &api_health
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+  keepassbox:
+    <<: *common
+    profiles: [keepassbox]
+    image: psyb0t/keepassbox:latest
+    user: ${STACK_UID:-1000}:${STACK_GID:-1000}
+    environment:
+      KEEPASSBOX_ACCESS_FILE: /data/access.local.json
+    read_only: true
+    cap_drop: [ALL]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 128
+    tmpfs: ['/tmp:size=64m,noexec,nosuid']
+    volumes: [./data/keepassbox:/data]
+    depends_on:
+      prepare: {condition: service_completed_successfully}
+    healthcheck: *api_health
 networks:
   stack:
     driver: bridge

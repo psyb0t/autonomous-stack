@@ -21,14 +21,14 @@ umask 077
 env_tmp=$(mktemp .env.init.XXXXXX)
 trap 'rm -f "$env_tmp"' EXIT
 cp .env.example "$env_tmp"
-for key in AUTONOMOUS_TOKEN BROWSER_TOKEN MAILBOX_TOKEN; do
+for key in AUTONOMOUS_TOKEN BROWSER_TOKEN MAILBOX_TOKEN MODEMBOX_TOKEN KEEPASSBOX_TOKEN; do
 	value=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
 	sed -i "s/^${key}=.*/${key}=${value}/" "$env_tmp"
 done
 sed -i "s/^STACK_UID=.*/STACK_UID=$(id -u)/;s/^STACK_GID=.*/STACK_GID=$(id -g)/" "$env_tmp"
 # A hard link publishes the completed file only if another init has not created it.
 if ln "$env_tmp" .env; then
-	log INFO 'Created private .env. Set Claude, Telegram and mail credentials, then run make setup.'
+	log INFO 'Created private .env. Set profiles and service credentials, then run make up.'
 else
 	log WARN 'Another init created .env. That file was preserved.'
 fi

@@ -14,7 +14,7 @@ Mailbox handles email. Plug in ModemBox for verification texts and KeePassBox fo
 
 ## Quick start
 
-Grab a machine you control, Docker with Compose v2, Make and Git. Give the agent its own accounts.
+Grab a machine you control, Docker with Compose v2.20 or newer, Make and Git. Give the agent its own accounts.
 
 ```bash
 git clone https://github.com/psyb0t/autonomous-stack.git
@@ -38,7 +38,7 @@ make up
 make status
 ```
 
-`make up` checks your settings, builds the helper image in Docker and starts the stack. The other images come from Docker Hub.
+`make up` starts the services selected in `COMPOSE_PROFILES`. Compose uses the published Go image for handoffs and runs its one-shot command to write the config files. Use `make image` if you're working on the Go code.
 
 `make init` generates distinct internal API tokens and never replaces an existing `.env`. Real credentials, runtime settings and data stay ignored by Git.
 
@@ -53,6 +53,8 @@ make status
 | `keepassbox` (optional) | [KeePassBox](https://github.com/psyb0t/docker-keepassbox) | Encrypted account storage and TOTP over MCP from an existing vault service |
 | `handoff` | [Autonomous Stack](https://github.com/psyb0t/autonomous-stack) | Help requests, Telegram notifications and the persistent viewer proxy |
 | `tailscale` | [Tailscale](https://github.com/tailscale/tailscale) | Private browser access under a persistent tailnet node name |
+
+Each service has a matching Compose profile. Reuse a browser, Mailbox, ModemBox or KeePassBox you run elsewhere by removing its profile and setting its MCP URL and token. See [local and remote services](docs/configuration.md#local-and-remote-services).
 
 The helper uses [servicepack](https://github.com/psyb0t/servicepack) for its lifecycle. Claudebox owns scheduling and Telegram polling. For USB modem access, run ModemBox on the host that has the modem attached.
 
@@ -88,7 +90,7 @@ Tracked `.gitkeep` files keep these directories present. Their runtime contents 
 
 [`.env.example`](.env.example) lists operator settings. [Configuration](docs/configuration.md) covers auth, prompts, mail and optional Dikciz, ModemBox and KeePassBox connections.
 
-After changing `.env` or pulling source, run `make restart`. It rebuilds the helper, regenerates configuration and recreates services. `make pull` refreshes upstream service images. `make stop` stops services; `make down` removes containers and the network without deleting persistent bind data.
+After changing `.env`, run `make restart` to recreate the selected services and remove containers from disabled profiles. `make pull` refreshes the selected images. `make stop` stops the containers, and `make down` removes them while keeping persistent data.
 
 Claude can use its tools while you're away. Its accounts, mounts and network access decide what it can touch. Give it what it needs for the job and watch the first few runs.
 

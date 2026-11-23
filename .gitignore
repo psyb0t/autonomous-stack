@@ -44,3 +44,5 @@ data/**
 !data/**/.gitkeep
 config/generated/*
 !config/generated/.gitkeep
+config/mailbox/*
+!config/mailbox/.gitkeep

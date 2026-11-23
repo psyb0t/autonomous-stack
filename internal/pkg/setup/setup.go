@@ -18,27 +18,31 @@ import (
 const privateDirectoryMode = 0o700
 
 type Config struct {
-	TelegramChatID  int64  `env:"TELEGRAM_CHAT_ID,required"`
-	TelegramUserID  int64  `env:"TELEGRAM_USER_ID,required"`
-	TelegramToken   string `env:"TELEGRAM_BOT_TOKEN,required"`
-	Model           string `default:"sonnet"                  env:"CLAUDE_MODEL"`
-	Effort          string `default:"high"                    env:"CLAUDE_EFFORT"`
-	Schedule        string `default:"*/30 * * * *"            env:"HEARTBEAT_SCHEDULE"`
-	Heartbeat       string `env:"HEARTBEAT_PROMPT,required"`
-	SystemPrompt    string `env:"AGENT_PROMPT,required"`
-	HandoffToken    string `env:"AUTONOMOUS_TOKEN,required"`
-	BrowserToken    string `env:"BROWSER_TOKEN,required"`
-	MailboxToken    string `env:"MAILBOX_TOKEN,required"`
-	IMAPHost        string `env:"MAIL_IMAP_HOST,required"`
-	IMAPPort        int    `default:"993"                     env:"MAIL_IMAP_PORT"`
-	IMAPTLS         string `default:"ssl"                     env:"MAIL_IMAP_TLS"`
-	SMTPHost        string `env:"MAIL_SMTP_HOST,required"`
-	SMTPPort        int    `default:"587"                     env:"MAIL_SMTP_PORT"`
-	SMTPTLS         string `default:"starttls"                env:"MAIL_SMTP_TLS"`
-	MailUsername    string `env:"MAIL_USERNAME,required"`
-	MailPassword    string `env:"MAIL_PASSWORD,required"`
-	MailFrom        string `env:"MAIL_FROM,required"`
-	MailSaveSent    bool   `default:"true"                    env:"MAIL_SAVE_SENT"`
+	Profiles        string `env:"STACK_PROFILES"`
+	TelegramChatID  int64  `env:"TELEGRAM_CHAT_ID"`
+	TelegramUserID  int64  `env:"TELEGRAM_USER_ID"`
+	TelegramToken   string `env:"TELEGRAM_BOT_TOKEN"`
+	Model           string `default:"sonnet"               env:"CLAUDE_MODEL"`
+	Effort          string `default:"high"                 env:"CLAUDE_EFFORT"`
+	Schedule        string `default:"*/30 * * * *"         env:"HEARTBEAT_SCHEDULE"`
+	Heartbeat       string `env:"HEARTBEAT_PROMPT"`
+	SystemPrompt    string `env:"AGENT_PROMPT"`
+	HandoffURL      string `env:"HANDOFF_MCP_URL"`
+	HandoffToken    string `env:"AUTONOMOUS_TOKEN"`
+	BrowserURL      string `env:"BROWSER_MCP_URL"`
+	BrowserToken    string `env:"BROWSER_TOKEN"`
+	MailboxURL      string `env:"MAILBOX_MCP_URL"`
+	MailboxToken    string `env:"MAILBOX_TOKEN"`
+	IMAPHost        string `env:"MAIL_IMAP_HOST"`
+	IMAPPort        int    `default:"993"                  env:"MAIL_IMAP_PORT"`
+	IMAPTLS         string `default:"ssl"                  env:"MAIL_IMAP_TLS"`
+	SMTPHost        string `env:"MAIL_SMTP_HOST"`
+	SMTPPort        int    `default:"587"                  env:"MAIL_SMTP_PORT"`
+	SMTPTLS         string `default:"starttls"             env:"MAIL_SMTP_TLS"`
+	MailUsername    string `env:"MAIL_USERNAME"`
+	MailPassword    string `env:"MAIL_PASSWORD"`
+	MailFrom        string `env:"MAIL_FROM"`
+	MailSaveSent    bool   `default:"true"                 env:"MAIL_SAVE_SENT"`
 	AuthservID      string `env:"MAIL_TRUSTED_AUTHSERV_ID"`
 	PhoneURL        string `env:"DIKCIZ_MCP_URL"`
 	PhoneToken      string `env:"DIKCIZ_API_KEY"`
@@ -48,7 +52,7 @@ type Config struct {
 	ModemBoxModemID string `env:"MODEMBOX_MODEM_ID"`
 	KeePassBoxURL   string `env:"KEEPASSBOX_MCP_URL"`
 	KeePassBoxToken string `env:"KEEPASSBOX_TOKEN"`
-	TailnetHostname string `default:"autonomous-stack"        env:"TS_HOSTNAME"`
+	TailnetHostname string `default:"autonomous-stack"     env:"TS_HOSTNAME"`
 }
 
 func Load() (Config, error) {
@@ -69,12 +73,14 @@ func (c Config) Validate() error {
 		return ctxerrors.Wrap(err, "tailnet hostname")
 	}
 
-	if err := c.validateOwner(); err != nil {
-		return ctxerrors.Wrap(err, "owner configuration")
-	}
+	if c.local("claude") {
+		if err := c.validateOwner(); err != nil {
+			return ctxerrors.Wrap(err, "owner configuration")
+		}
 
-	if err := c.validateAgent(); err != nil {
-		return ctxerrors.Wrap(err, "agent configuration")
+		if err := c.validateAgent(); err != nil {
+			return ctxerrors.Wrap(err, "agent configuration")
+		}
 	}
 
 	if err := c.validateMail(); err != nil {
@@ -92,6 +98,22 @@ func (c Config) Validate() error {
 	return nil
 }
 
+func (c Config) local(name string) bool {
+	if c.Profiles == "" {
+		return name == "claude" || name == "handoff" ||
+			name == "browser" || name == "mailbox"
+	}
+
+	for profile := range strings.SplitSeq(c.Profiles, ",") {
+		if strings.TrimSpace(profile) == name ||
+			strings.TrimSpace(profile) == "*" {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (c Config) validateOwner() error {
 	if c.TelegramChatID == 0 || c.TelegramUserID <= 0 ||
 		strings.TrimSpace(c.TelegramToken) == "" {
@@ -99,17 +121,6 @@ func (c Config) validateOwner() error {
 			commerr.ErrValidationFailed,
 			"set the Telegram bot, owner chat and owner user ID",
 		)
-	}
-
-	tokens := []string{c.HandoffToken, c.BrowserToken, c.MailboxToken}
-	for _, token := range tokens {
-		if len(strings.TrimSpace(token)) < config.MinimumTokenLength ||
-			strings.Contains(token, "REPLACE_ME") {
-			return ctxerrors.Wrap(
-				commerr.ErrValidationFailed,
-				"generate distinct internal API tokens with make init",
-			)
-		}
 	}
 
 	return nil
@@ -146,6 +157,16 @@ func (c Config) validateAgent() error {
 }
 
 func (c Config) validateMail() error {
+	if !c.local("mailbox") {
+		if c.MailFrom != "" {
+			if _, err := mail.ParseAddress(c.MailFrom); err != nil {
+				return ctxerrors.Wrap(err, "invalid mail sender")
+			}
+		}
+
+		return nil
+	}
+
 	if err := c.validateMailTransport(); err != nil {
 		return ctxerrors.Wrap(err, "mail transport")
 	}
@@ -202,29 +223,7 @@ type mcpServer struct {
 }
 
 func configuredMCPServers(cfg Config) map[string]mcpServer {
-	servers := map[string]mcpServer{
-		"browser": {
-			Type: "http",
-			URL:  "http://browser:8080/mcp",
-			Headers: map[string]string{
-				"Authorization": "Bearer " + cfg.BrowserToken,
-			},
-		},
-		"mailbox": {
-			Type: "http",
-			URL:  "http://mailbox:8000/mcp",
-			Headers: map[string]string{
-				"Authorization": "Bearer " + cfg.MailboxToken,
-			},
-		},
-		"handoff": {
-			Type: "http",
-			URL:  "http://handoff:8080/mcp",
-			Headers: map[string]string{
-				"Authorization": "Bearer " + cfg.HandoffToken,
-			},
-		},
-	}
+	servers := make(map[string]mcpServer)
 	if cfg.PhoneURL != "" {
 		servers["phone"] = mcpServer{
 			Type: "http",
@@ -235,11 +234,11 @@ func configuredMCPServers(cfg Config) map[string]mcpServer {
 		}
 	}
 
-	for _, service := range cfg.externalMCPServices() {
-		if service.url != "" {
+	for _, service := range cfg.mcpServices() {
+		if endpoint := service.endpoint(); endpoint != "" {
 			servers[service.name] = mcpServer{
 				Type: "http",
-				URL:  service.url,
+				URL:  endpoint,
 				Headers: map[string]string{
 					"Authorization": "Bearer " + service.token,
 				},
@@ -255,32 +254,54 @@ func Generate(cfg Config, root string) error {
 		return ctxerrors.Wrap(err, "refuse invalid generated configuration")
 	}
 
-	cron, telegram := cronConfig(cfg), telegramConfig(cfg)
-	servers := configuredMCPServers(cfg)
-	mailbox := mailboxConfig(cfg)
-
-	files := map[string]any{
-		"config/generated/cron.yml":     cron,
-		"config/generated/telegram.yml": telegram,
-		"config/generated/mailbox.yml":  mailbox,
-		"data/workspace/agent/.mcp.json": map[string]any{
-			"mcpServers": servers,
-		},
-		"data/workspace/agent/.claude/settings.local.json": map[string]any{
-			"enableAllProjectMcpServers": true,
-		},
-	}
-	for name, value := range files {
+	for name, value := range cfg.generatedFiles() {
 		if err := writeJSON(filepath.Join(root, name), value); err != nil {
 			return ctxerrors.Wrap(err, "write private runtime configuration")
 		}
 	}
 
-	if err := prepareIdentity(cfg, root); err != nil {
-		return ctxerrors.Wrap(err, "prepare account password storage")
+	if cfg.local("claude") {
+		if err := prepareIdentity(cfg, root); err != nil {
+			return ctxerrors.Wrap(err, "prepare account password storage")
+		}
 	}
 
 	return nil
+}
+
+func (c Config) generatedFiles() map[string]any {
+	files := make(map[string]any)
+	if c.local("claude") {
+		files["config/generated/cron.yml"] = cronConfig(c)
+		files["config/generated/telegram.yml"] = telegramConfig(c)
+		files["data/workspace/agent/.mcp.json"] = map[string]any{
+			"mcpServers": configuredMCPServers(c),
+		}
+		settingsPath := "data/workspace/agent/.claude/settings.local.json"
+		files[settingsPath] = map[string]any{
+			"enableAllProjectMcpServers": true,
+		}
+	}
+
+	if c.local("mailbox") {
+		path := "config/mailbox/config.yaml"
+		if c.Profiles == "" {
+			path = "config/generated/mailbox.yml"
+		}
+
+		files[path] = mailboxConfig(c)
+	}
+
+	if c.local("keepassbox") {
+		files["data/keepassbox/access.local.json"] = map[string]any{
+			"clients": []map[string]string{{
+				"owner": "automation",
+				"token": c.KeePassBoxToken,
+			}},
+		}
+	}
+
+	return files
 }
 
 func writeJSON(path string, value any) error {
