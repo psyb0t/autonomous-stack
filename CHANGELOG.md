@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.3.0 (2026-11-23)
+
+- Connect to optional ModemBox and KeePassBox MCP servers for verification SMS, encrypted account credentials and TOTP. Set the endpoint URLs and bearer tokens in `.env` and run `make restart` to enable them.
+- Direct the agent to use OS-level keyboard and mouse input for browser interactions.
+- Configure an approved verification phone number and generate the agent's private email, phone and mailbox identity.
+- Preserve existing local account records across setup runs. Use the approved vault for new records when KeePassBox is configured.
+
 ## v0.2.0 (2026-11-04)
 
 - Keep the tailnet browser permanently available, removing expiring viewer links and cookies. Plain `ready` and `done` coordinate automation without copied request IDs.

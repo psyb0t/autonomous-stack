@@ -49,10 +49,12 @@ make status
 | `claude` | [Claudebox](https://github.com/psyb0t/docker-claudebox) | Claude Code, heartbeat cron and owner-only Telegram |
 | `browser` | [Stealthy Auto-Browse](https://github.com/psyb0t/docker-stealthy-auto-browse) | Browser MCP, screenshots, persistent profile and viewer |
 | `mailbox` | [Mailbox](https://github.com/psyb0t/docker-mailbox) | Email MCP, IMAP reading and SMTP sending |
+| `modembox` (optional) | [ModemBox](https://github.com/psyb0t/docker-modembox) | SMS and modem control over MCP from an existing USB modem gateway |
+| `keepassbox` (optional) | [KeePassBox](https://github.com/psyb0t/docker-keepassbox) | Encrypted account storage and TOTP over MCP from an existing vault service |
 | `handoff` | [Autonomous Stack](https://github.com/psyb0t/autonomous-stack) | Help requests, Telegram notifications and the persistent viewer proxy |
 | `tailscale` | [Tailscale](https://github.com/tailscale/tailscale) | Private browser access under a persistent tailnet node name |
 
-The helper uses [servicepack](https://github.com/psyb0t/servicepack) for its lifecycle. Optional phone access uses [Dikciz Launcher](https://github.com/psyb0t/dikciz-launcher). Claudebox owns scheduling and Telegram polling. No Docker socket, USB modem or extra Telegram client is included.
+The helper uses [servicepack](https://github.com/psyb0t/servicepack) for its lifecycle. Claudebox owns scheduling and Telegram polling. For USB modem access, run ModemBox on the host that has the modem attached.
 
 No ports are published on the host. Tool APIs use bearer authentication on the Compose network. Tailscale Serve exposes the browser viewer at `http://autonomous-stack` by default. Tailnet membership and ACLs control access; there is no viewer password or expiring link. Anyone permitted to reach that node can control the browser, so restrict its ACLs accordingly. The MCP and browser automation APIs are not exposed through Serve. Nothing uses Funnel or a public tunnel.
 
@@ -84,7 +86,7 @@ Tracked `.gitkeep` files keep these directories present. Their runtime contents 
 
 ## Configuration and operation
 
-[`.env.example`](.env.example) lists operator settings. [Configuration](docs/configuration.md) covers auth, prompts, mail and optional Dikciz phone MCP access.
+[`.env.example`](.env.example) lists operator settings. [Configuration](docs/configuration.md) covers auth, prompts, mail and optional Dikciz, ModemBox and KeePassBox connections.
 
 After changing `.env` or pulling source, run `make restart`. It rebuilds the helper, regenerates configuration and recreates services. `make pull` refreshes upstream service images. `make stop` stops services; `make down` removes containers and the network without deleting persistent bind data.
 

@@ -32,7 +32,7 @@ Claude has unattended tool access. Use dedicated accounts, approve a narrow task
 
 ## Troubleshooting
 
-Missing Telegram/mail configuration is rejected by setup. Start the bot chat before deploying and stop other pollers using that token. A phone URL must work from the container network, including any VPN routing.
+Missing Telegram/mail configuration is rejected by setup. Start the bot chat before deploying and stop other pollers using that token. The Claudebox container must be able to reach any configured Dikciz, ModemBox or KeePassBox endpoint, including through any required VPN routes.
 
 A sidecar login or Serve failure stops `make up` with an error. Check `make logs`, tailnet key validity and control-server reachability. Notification failure affects help coordination, not viewer access. Finish a broken help request and inspect health rather than exposing raw viewer ports.
 

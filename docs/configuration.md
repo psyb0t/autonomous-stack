@@ -12,6 +12,8 @@ The auth directory mounts at `/claude-auth`, outside the base image's home owner
 
 `CLAUDE_MODEL` and `CLAUDE_EFFORT` configure both modes. `HEARTBEAT_SCHEDULE` accepts five cron fields, or six with seconds first. `TZ` sets the container timezone. `HEARTBEAT_PROMPT` defines each scheduled run; `AGENT_PROMPT` is appended to both modes' system prompts. `config/agent.md` supplies the MCP and handoff operating instructions.
 
+The operating instructions require OS-level mouse and keyboard input for browser interactions, not Playwright input or JavaScript page mutations. Read-only page inspection remains available. These instructions do not bypass a website's access rules or guarantee model compliance.
+
 ## Telegram
 
 `TELEGRAM_BOT_TOKEN` authenticates the bot. `TELEGRAM_CHAT_ID` selects the numeric destination, including a group's minus sign. `TELEGRAM_USER_ID` selects the owner allowed to issue commands. Setup generates explicit chat and user allowlists. Start the bot from that account before deployment. Claudebox is the only update poller; the helper only sends messages.
@@ -31,6 +33,28 @@ The generated token has `read`, `draft`, `organize` and `send` scopes on `primar
 ## Optional phone
 
 Set both `DIKCIZ_MCP_URL` and `DIKCIZ_API_KEY` to add a [Dikciz Launcher](https://github.com/psyb0t/dikciz-launcher) `phone` MCP server. Include the `/mcp` path. The URL must be reachable from the Claude container; a URL working only on your desktop is insufficient. Prefer a private network or authenticated TLS endpoint. Both empty disables phone access. SMS permissions, numbers and SIM selection come from Dikciz's tools.
+
+### ModemBox
+
+Set `MODEMBOX_MCP_URL` to the full [ModemBox MCP endpoint](https://psyb0t.github.io/docker-modembox/mcp/) on your modem host and `MODEMBOX_TOKEN` to its operator token. Both empty disables the connection. The Claude container must be able to reach the endpoint. Use HTTPS or an isolated trusted network. A ModemBox operator token has access to every feature exposed by that instance, so use a dedicated instance or SIM for the agent.
+
+For SMS verification, set `MODEMBOX_MODEM_ID` to the device ID from ModemBox that you have confirmed serves `AUTONOMOUS_PHONE_NUMBER`. Setup records the mapping as `modembox_modem_id` in the generated identity. Update it if you change the SIM. Both Dikciz and ModemBox can be configured, and the agent uses the mapping to select the right inbox.
+
+### KeePassBox
+
+Set `KEEPASSBOX_MCP_URL` to the full [KeePassBox MCP endpoint](https://psyb0t.github.io/docker-keepassbox/mcp/) and `KEEPASSBOX_TOKEN` to a bearer token for a dedicated agent owner. Provide an agent vault with entry read and write permissions and access to secrets if the agent needs to retrieve passwords or generate TOTP codes. Both settings empty disables the connection. Keep the endpoint reachable from Claude over HTTPS or an isolated trusted network. The vault must be accessible before the agent submits an account signup.
+
+These connections use existing services. Run `make restart` after changing either endpoint or token so setup regenerates the private MCP configuration.
+
+## Agent identity and account passwords
+
+Set `AUTONOMOUS_PHONE_NUMBER` to the owner-approved verification number in E.164 format, including its leading `+` and no spaces. Leave it empty to require an owner decision before phone verification. This selects an identity; it does not change Android's default SIM or grant phone permissions. The agent must confirm the matching subscription or ask when the device cannot distinguish numbers.
+
+Setup writes `/config/identity.json` for the agent with `MAIL_FROM`, the selected phone number and the mailbox login. The host file is `config/generated/identity.json`, mode 0600. Real values stay out of reusable prompts. Mailbox MCP remains the normal mail interface.
+
+With KeePassBox configured, the agent stores new account credentials in the approved vault. Without it, credentials go in `/workspace/agent/private/passwords.json`, backed by `data/workspace/agent/private/passwords.json` here. Setup creates an empty mode-0600 file in a mode-0700 directory and preserves existing entries. It rejects unsafe permissions, directories and symbolic links at the password-file path. Existing local entries stay where they are until the owner moves them. The local password file and generated identity contain plaintext secrets. Both are ignored by Git and excluded from image builds.
+
+Verification instructions restrict the agent to relevant recent messages for the current approved task. Missing permissions, ambiguous SIM mapping or undelivered codes require owner help rather than permission changes or repeated sends.
 
 ## Internal services
 

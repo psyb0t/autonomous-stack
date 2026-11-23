@@ -6,6 +6,7 @@ import (
 	"net/mail"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/psyb0t/autonomous-stack/internal/pkg/config"
@@ -41,6 +42,12 @@ type Config struct {
 	AuthservID      string `env:"MAIL_TRUSTED_AUTHSERV_ID"`
 	PhoneURL        string `env:"DIKCIZ_MCP_URL"`
 	PhoneToken      string `env:"DIKCIZ_API_KEY"`
+	PhoneNumber     string `env:"AUTONOMOUS_PHONE_NUMBER"`
+	ModemBoxURL     string `env:"MODEMBOX_MCP_URL"`
+	ModemBoxToken   string `env:"MODEMBOX_TOKEN"`
+	ModemBoxModemID string `env:"MODEMBOX_MODEM_ID"`
+	KeePassBoxURL   string `env:"KEEPASSBOX_MCP_URL"`
+	KeePassBoxToken string `env:"KEEPASSBOX_TOKEN"`
 	TailnetHostname string `default:"autonomous-stack"        env:"TS_HOSTNAME"`
 }
 
@@ -76,6 +83,10 @@ func (c Config) Validate() error {
 
 	if err := c.validatePhone(); err != nil {
 		return ctxerrors.Wrap(err, "phone configuration")
+	}
+
+	if err := c.validateExternalMCP(); err != nil {
+		return ctxerrors.Wrap(err, "external MCP configuration")
 	}
 
 	return nil
@@ -155,6 +166,14 @@ func (c Config) validateMail() error {
 }
 
 func (c Config) validatePhone() error {
+	if c.PhoneNumber != "" &&
+		!regexp.MustCompile(`^\+[1-9][0-9]{1,14}$`).MatchString(c.PhoneNumber) {
+		return ctxerrors.Wrap(
+			commerr.ErrValidationFailed,
+			"verification phone must use E.164 format",
+		)
+	}
+
 	if c.PhoneURL != "" {
 		if err := config.ValidateURL(c.PhoneURL); err != nil {
 			return ctxerrors.Wrap(err, "invalid Dikciz MCP URL")
@@ -182,13 +201,7 @@ type mcpServer struct {
 	Headers map[string]string `json:"headers"`
 }
 
-func Generate(cfg Config, root string) error {
-	if err := cfg.Validate(); err != nil {
-		return ctxerrors.Wrap(err, "refuse invalid generated configuration")
-	}
-
-	cron, telegram := cronConfig(cfg), telegramConfig(cfg)
-
+func configuredMCPServers(cfg Config) map[string]mcpServer {
 	servers := map[string]mcpServer{
 		"browser": {
 			Type: "http",
@@ -222,6 +235,28 @@ func Generate(cfg Config, root string) error {
 		}
 	}
 
+	for _, service := range cfg.externalMCPServices() {
+		if service.url != "" {
+			servers[service.name] = mcpServer{
+				Type: "http",
+				URL:  service.url,
+				Headers: map[string]string{
+					"Authorization": "Bearer " + service.token,
+				},
+			}
+		}
+	}
+
+	return servers
+}
+
+func Generate(cfg Config, root string) error {
+	if err := cfg.Validate(); err != nil {
+		return ctxerrors.Wrap(err, "refuse invalid generated configuration")
+	}
+
+	cron, telegram := cronConfig(cfg), telegramConfig(cfg)
+	servers := configuredMCPServers(cfg)
 	mailbox := mailboxConfig(cfg)
 
 	files := map[string]any{
@@ -239,6 +274,10 @@ func Generate(cfg Config, root string) error {
 		if err := writeJSON(filepath.Join(root, name), value); err != nil {
 			return ctxerrors.Wrap(err, "write private runtime configuration")
 		}
+	}
+
+	if err := prepareIdentity(cfg, root); err != nil {
+		return ctxerrors.Wrap(err, "prepare account password storage")
 	}
 
 	return nil

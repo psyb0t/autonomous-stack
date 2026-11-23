@@ -1,6 +1,6 @@
-AGENTS.md
-CLAUDE.md
 CODEX.local.md
+CLAUDE.local.md
+*.local.json
 .research_files/
 .agent_notes/
 .agent_knowledge/
@@ -31,6 +31,8 @@ coverage*.txt
 coverage*.out
 coverage*.html
 profile.out
+.cover/
+htmlcov/
 sec.sarif
 git-update.sh
 git-update.sh.debot
