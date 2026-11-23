@@ -6,15 +6,15 @@ Use Make for tooling. Normal tooling has no Docker socket. Infrastructure tests 
 
 `make generate` finds the service implementations and writes the registration code. Make your changes in the service source so they survive regeneration.
 
-`make test-runtime` builds the helper and starts isolated browser, Mailbox and helper containers with disposable account settings. It tests generated configuration, the real viewer, readiness and MCP authentication, then stops only its own fixtures. It never starts Claude, polls Telegram or opens a public tunnel. Pull the upstream service images with `make pull` first.
+`make test-runtime` builds the helper and starts isolated browser, Mailbox and helper containers with disposable account settings. It tests generated configuration, the real viewer, readiness, MCP authentication and PiBox's bridge, then stops only its own fixtures. It uses local fixtures for agent configuration and tool calls. Pull the upstream service images with `make pull` first.
 
-`make audit-compose` validates the rendered deployment without printing credentials. It rejects public port bindings, host access, unrestricted capabilities, mutable external images and missing runtime restrictions. Browser and Claudebox have the exact bootstrap capability exceptions described in the deployment guide. CI runs both the runtime smoke test and this audit.
+`make audit-compose` validates the rendered deployment without printing credentials. It rejects public port bindings, host access, unrestricted capabilities, mutable external images and missing runtime restrictions. The browser and selected agent runtime have the exact bootstrap capability exceptions described in the deployment guide. CI runs both the runtime smoke test and this audit.
 
 `make test-tailnet` starts a disposable Headscale controller, two real Tailscale nodes and a helper with a local notification fixture. It verifies stable short-name access over WireGuard before, during and after assistance, without cookies, and preserved access after sidecar restart. It uses no owner credentials or existing tailnet and stops only its own containers. CI runs it alongside the browser smoke test.
 
 `make test-captcha-config` renders the production Compose model with disabled defaults and all seven provider names, checking exact value forwarding and browser-only key exposure. It runs without contacting solver providers and is included in `make test-runtime` and CI.
 
-`make test-notify` checks the send-only progress helper with a mocked Telegram HTTP boundary, including malformed configuration, message limits and credential-safe errors. The runtime test target includes it. Live phone tests require owner-provided Claude, Telegram and Dikciz credentials and must not expose SMS bodies or verification codes in reports.
+`make test-notify` checks the send-only progress helper with a mocked Telegram HTTP boundary, including malformed configuration, message limits and credential-safe errors. The runtime test target includes it. Live phone tests require owner-provided model, Telegram and Dikciz credentials and must not expose SMS bodies or verification codes in reports.
 
 ## Publishing
 
@@ -24,4 +24,4 @@ The tag job waits for the exact commit to pass on `main`. If the run fails, time
 
 Other callers mirror to GitLab/Codeberg, import mirror issues, archive public pages and close external PRs without executing their code.
 
-Required Actions secrets are `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `GITLAB_TOKEN`, `CODEBERG_TOKEN`, `ARCHIVEORG_ACCESS_KEY` and `ARCHIVEORG_SECRET_KEY`. Set them before the first push. Runtime Claude, Telegram, mail and phone credentials never belong in Actions.
+Required Actions secrets are `DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`, `GITLAB_TOKEN`, `CODEBERG_TOKEN`, `ARCHIVEORG_ACCESS_KEY` and `ARCHIVEORG_SECRET_KEY`. Set them before the first push. Runtime model, Telegram, mail and phone credentials never belong in Actions.

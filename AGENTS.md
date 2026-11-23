@@ -1,6 +1,6 @@
 # Autonomous Stack contributor guide
 
-Autonomous Stack runs a Claude Code agent with scheduled work, Telegram, email and a persistent browser. Docker Compose runs the services. The Go helper uses servicepack for its lifecycle.
+Autonomous Stack runs a Claude Code or Pi agent with scheduled work, Telegram, email and a persistent browser. Docker Compose runs the services. The Go helper uses servicepack for its lifecycle.
 
 - `internal/pkg/setup/` validates deployment settings and generates the agent's MCP configuration.
 - `internal/pkg/handoff/` owns human assistance state. `internal/pkg/http/server/` exposes the handoff MCP tools and browser viewer proxy.

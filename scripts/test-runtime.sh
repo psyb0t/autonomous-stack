@@ -90,4 +90,34 @@ docker exec "$prefix-browser" curl -fsS \
 	-H "Authorization: Bearer $fixture_token" -H 'Content-Type: application/json' \
 	-H 'Accept: application/json, text/event-stream' \
 	-d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' http://handoff:8080/mcp >"$fixture_root/tools.json"
-log INFO 'Runtime checks passed. No Claude, Telegram polling or public tunnel was started.'
+docker run --rm --init --network "$prefix" --entrypoint node \
+	--cap-drop ALL --security-opt no-new-privileges:true \
+	-v "$root/scripts/pibox-mcp-bridge.js:/opt/stack/pibox-mcp-bridge.js:ro" \
+	-e AUTONOMOUS_MCP_URL=http://handoff:8080/mcp \
+	-e "AUTONOMOUS_MCP_AUTHORIZATION=Bearer $fixture_token" psyb0t/pibox:latest -e '
+const assert = require("node:assert/strict");
+const sdk = require("node:module").createRequire("/opt/pibox/extensions/mcp-bridge/package.json");
+const { Client } = sdk("@modelcontextprotocol/sdk/client/index.js");
+const { StdioClientTransport } = sdk("@modelcontextprotocol/sdk/client/stdio.js");
+async function check() {
+  const client = new Client({ name: "pibox-fixture", version: "1.0.0" });
+  const bridge = new StdioClientTransport({
+    command: "node",
+    args: ["/opt/stack/pibox-mcp-bridge.js"],
+    env: {
+      AUTONOMOUS_MCP_URL: process.env.AUTONOMOUS_MCP_URL,
+      AUTONOMOUS_MCP_AUTHORIZATION: process.env.AUTONOMOUS_MCP_AUTHORIZATION,
+    },
+  });
+  try {
+    await client.connect(bridge);
+    const { tools } = await client.listTools();
+    assert(tools.some(({ name }) => name === "handoff_status"));
+    const result = await client.callTool({ name: "handoff_status", arguments: {} });
+    assert(!result.isError);
+  } finally {
+    await client.close();
+  }
+}
+check().catch((err) => { console.error(err); process.exitCode = 1; });'
+log INFO 'Runtime checks passed, including the PiBox MCP bridge.'

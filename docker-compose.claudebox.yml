@@ -1,0 +1,14 @@
+services:
+  harness:
+    image: psyb0t/claudebox:latest
+    environment:
+      CLAUDE_CONFIG_DIR: /claude-auth
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./config/agent.md:/workspace/agent/CLAUDE.md:ro
+      - ./data/claudebox:/home/aicode/.aicodebox
+      - type: bind
+        source: ${CLAUDE_AUTH_DIR:-./data/claude}
+        target: /claude-auth
+        bind: {create_host_path: false}

@@ -89,6 +89,8 @@ test-tailnet: test-image dev-image ## Test private browser access on an isolated
 
 .PHONY: audit-compose
 audit-compose: dev-image ## Check rendered deployment policy and documented bootstrap exceptions
-	@umask 077; file=$$(mktemp .cache/compose.XXXXXX); trap 'rm -f "$$file"' EXIT; \
-		docker compose --env-file .env.example --profile '*' config --no-env-resolution --format json >"$$file"; \
-		$(DEV_RUN) bash scripts/audit-compose.sh "/work/$$file"
+	@set -eu; umask 077; file=$$(mktemp .cache/compose.XXXXXX); trap 'rm -f "$$file"' EXIT; \
+		for harness in claudebox pibox; do \
+			HARNESS_PLATFORM=$$harness docker compose --env-file .env.example --profile '*' config --no-env-resolution --format json >"$$file"; \
+			$(DEV_RUN) bash scripts/audit-compose.sh "/work/$$file"; \
+		done

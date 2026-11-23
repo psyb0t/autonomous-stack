@@ -1,10 +1,12 @@
 # Deployment
 
-Run Docker on the machine with this checkout. The daemon resolves bind paths on its own filesystem, so setup needs that machine's copy of the files.
+Run Docker on the machine with this checkout. From the checkout's root, Compose reads [`docker-compose.yml`](../docker-compose.yml) and `.env`. Keep `config/agent.md`, `scripts/telegram_notify.py`, and the `data/` directories beside the Compose file. Docker resolves those bind mounts on the host.
+
+Follow the [quick start](../README.md#quick-start) for the initial setup. After creating and editing `.env`, run `make pull` and `make up` from the checkout. These run `docker compose pull` and `docker compose up -d` with the selected profiles.
 
 ## Data and ownership
 
-Run init as the checkout's owner. The helper and Mailbox use `STACK_UID:STACK_GID`; browser and Claudebox bootstrap a matching runtime user. Do not switch ownership without correcting the bind directories deliberately.
+Run init as the checkout's owner. The helper and Mailbox use `STACK_UID:STACK_GID`; the browser and selected runtime bootstrap a matching runtime user. Do not switch ownership without correcting the bind directories deliberately.
 
 Back up `.env`, `data/` and any external Claude auth directory privately. Stop the stack for a consistent copy, including Mailbox's SQLite state and the browser profile. Test restore into a separate directory. Never share one live browser profile between running instances.
 
@@ -16,7 +18,7 @@ No host ports are published. Do not attach unrelated containers to this Compose 
 
 The helper, Mailbox and Tailscale sidecar run non-root with no capabilities and read-only roots. Each has only its required writable state and temporary storage.
 
-Browser and Claudebox have writable roots and narrow bootstrap capabilities. Browser fixes profile ownership before dropping privileges. Claudebox installs the supported Claude CLI, matches UID/GID and drops privileges. The optional ModemBox service receives the selected host serial device.
+The browser and selected runtime have writable roots and narrow bootstrap capabilities. Browser fixes profile ownership before dropping privileges. The runtime matches UID/GID and drops privileges. The optional ModemBox service receives the selected host serial device.
 
 The selected Claude auth directory is writable for refresh. Mounting an existing auth directory shares those credentials with the container. Use a dedicated token or repo-local directory if that sharing is unwanted.
 
@@ -26,13 +28,13 @@ Root and Docker-group users can inspect container credentials. `.env` permission
 
 `make status` shows service health. `make logs` follows the logs. Use `make pull` to grab fresh images and `make restart` to recreate the selected services. Use `make stop` to stop the stack. Back up state and check the upstream release notes before updating.
 
-Claudebox has no readiness endpoint in Telegram mode. Its healthcheck checks the native bot process, which also starts the cron scheduler in a thread. It does not prove an external Telegram connection or Claude authentication. Check an owner message and a heartbeat after initial deployment.
+The agent runtime healthcheck in Telegram mode checks the bot process. The bot starts the cron scheduler. Check model and Telegram access separately. Check an owner message and a heartbeat after initial deployment.
 
-Claude has unattended tool access. Use dedicated accounts, approve a narrow task scope and watch early runs. Prompt rules do not make hostile email or web pages safe. Cron and Telegram may launch separate processes sharing the workspace; coordinate tasks in your operating instructions.
+The agent has unattended tool access. Use dedicated accounts, approve a narrow task scope and watch early runs. Prompt rules do not make hostile email or web pages safe. Cron and Telegram may launch separate processes sharing the workspace; coordinate tasks in your operating instructions.
 
 ## Troubleshooting
 
-Missing Telegram/mail configuration is rejected by setup. Start the bot chat before deploying and stop other pollers using that token. The Claudebox container must be able to reach any configured Dikciz, ModemBox or KeePassBox endpoint, including through any required VPN routes.
+Missing Telegram/mail configuration is rejected by setup. Start the bot chat before deploying and stop other pollers using that token. The agent container must be able to reach any configured Dikciz, ModemBox or KeePassBox endpoint, including through any required VPN routes.
 
 If the viewer isn't reachable, check `make status`, the Tailscale logs, tailnet key validity and control-server reachability. A Telegram notification failure can leave a pending help request. Inspect it through the handoff tools.
 

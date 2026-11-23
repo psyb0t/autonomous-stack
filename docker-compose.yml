@@ -9,7 +9,7 @@ x-common: &common
   networks: [stack]
 services:
   prepare:
-    profiles: [claude, mailbox, keepassbox]
+    profiles: [agent, claude, mailbox, keepassbox]
     image: ${AUTONOMOUS_IMAGE:-psyb0t/autonomous-stack:latest}
     command: [prepare]
     user: ${STACK_UID:-1000}:${STACK_GID:-1000}
@@ -17,6 +17,10 @@ services:
     environment:
       SERVICES_ENABLED: ''
       STACK_PROFILES: ${COMPOSE_PROFILES:-none}
+      HARNESS_PLATFORM: ${HARNESS_PLATFORM:-claudebox}
+      PIBOX_ZAI_BASE_URL: ${PIBOX_ZAI_BASE_URL:-https://api.z.ai/api/anthropic}
+      PIBOX_ZAI_AUTH_TOKEN: ${PIBOX_ZAI_AUTH_TOKEN:-}
+      PIBOX_ZAI_DEFAULT_MODEL: ${PIBOX_ZAI_DEFAULT_MODEL:-glm-5.3-flash}
       ENV: prod
       LOG_LEVEL: info
       # Setup reads .env but does not need the browser's solver credential.
@@ -167,19 +171,18 @@ services:
       start_period: 90s
   claude:
     <<: *common
-    profiles: [claude]
-    image: psyb0t/claudebox:latest
+    profiles: [agent, claude]
+    extends:
+      file: docker-compose.${HARNESS_PLATFORM:-claudebox}.yml
+      service: harness
     environment:
-      CLAUDEBOX_CRON_MODE: '1'
-      CLAUDEBOX_CRON_MODE_FILE: /config/cron.yml
-      CLAUDEBOX_TELEGRAM_MODE: '1'
-      CLAUDEBOX_TELEGRAM_MODE_CONFIG: /config/telegram.yml
-      CLAUDEBOX_TELEGRAM_MODE_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      AICODEBOX_CRON_MODE: '1'
+      AICODEBOX_CRON_MODE_FILE: /config/cron.yml
+      AICODEBOX_TELEGRAM_MODE: '1'
+      AICODEBOX_TELEGRAM_MODE_CONFIG: /config/telegram.yml
+      AICODEBOX_TELEGRAM_MODE_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      CLAUDEBOX_WORKSPACE: /workspace
-      CLAUDE_CONFIG_DIR: /claude-auth
-      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AICODEBOX_WORKSPACE: /workspace
       TZ: ${TZ:-Etc/UTC}
     # CLI installation and UID matching require a writable root and bootstrap caps.
     cap_drop: [ALL]
@@ -195,14 +198,8 @@ services:
       start_period: 120s
     volumes:
       - ./config/generated:/config:ro
-      - ./config/agent.md:/workspace/agent/CLAUDE.md:ro
       - ./scripts/telegram_notify.py:/opt/stack/telegram_notify.py:ro
       - ./data/workspace:/workspace
-      - ./data/claudebox:/home/aicode/.aicodebox
-      - type: bind
-        source: ${CLAUDE_AUTH_DIR:-./data/claude}
-        target: /claude-auth
-        bind: {create_host_path: false}
     depends_on:
       prepare: {condition: service_completed_successfully}
       mailbox: {condition: service_healthy, required: false}

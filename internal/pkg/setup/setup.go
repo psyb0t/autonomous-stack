@@ -19,12 +19,16 @@ const privateDirectoryMode = 0o700
 
 type Config struct {
 	Profiles        string `env:"STACK_PROFILES"`
+	HarnessPlatform string `env:"HARNESS_PLATFORM"`
+	ZAIAuthToken    string `env:"PIBOX_ZAI_AUTH_TOKEN"`
+	ZAIBaseURL      string `default:"https://api.z.ai/api/anthropic" env:"PIBOX_ZAI_BASE_URL"`
+	ZAIModel        string `default:"glm-5.3-flash"                  env:"PIBOX_ZAI_DEFAULT_MODEL"`
 	TelegramChatID  int64  `env:"TELEGRAM_CHAT_ID"`
 	TelegramUserID  int64  `env:"TELEGRAM_USER_ID"`
 	TelegramToken   string `env:"TELEGRAM_BOT_TOKEN"`
-	Model           string `default:"sonnet"               env:"CLAUDE_MODEL"`
-	Effort          string `default:"high"                 env:"CLAUDE_EFFORT"`
-	Schedule        string `default:"*/30 * * * *"         env:"HEARTBEAT_SCHEDULE"`
+	Model           string `default:"sonnet"                         env:"CLAUDE_MODEL"`
+	Effort          string `default:"high"                           env:"CLAUDE_EFFORT"`
+	Schedule        string `default:"*/30 * * * *"                   env:"HEARTBEAT_SCHEDULE"`
 	Heartbeat       string `env:"HEARTBEAT_PROMPT"`
 	SystemPrompt    string `env:"AGENT_PROMPT"`
 	HandoffURL      string `env:"HANDOFF_MCP_URL"`
@@ -34,15 +38,15 @@ type Config struct {
 	MailboxURL      string `env:"MAILBOX_MCP_URL"`
 	MailboxToken    string `env:"MAILBOX_TOKEN"`
 	IMAPHost        string `env:"MAIL_IMAP_HOST"`
-	IMAPPort        int    `default:"993"                  env:"MAIL_IMAP_PORT"`
-	IMAPTLS         string `default:"ssl"                  env:"MAIL_IMAP_TLS"`
+	IMAPPort        int    `default:"993"                            env:"MAIL_IMAP_PORT"`
+	IMAPTLS         string `default:"ssl"                            env:"MAIL_IMAP_TLS"`
 	SMTPHost        string `env:"MAIL_SMTP_HOST"`
-	SMTPPort        int    `default:"587"                  env:"MAIL_SMTP_PORT"`
-	SMTPTLS         string `default:"starttls"             env:"MAIL_SMTP_TLS"`
+	SMTPPort        int    `default:"587"                            env:"MAIL_SMTP_PORT"`
+	SMTPTLS         string `default:"starttls"                       env:"MAIL_SMTP_TLS"`
 	MailUsername    string `env:"MAIL_USERNAME"`
 	MailPassword    string `env:"MAIL_PASSWORD"`
 	MailFrom        string `env:"MAIL_FROM"`
-	MailSaveSent    bool   `default:"true"                 env:"MAIL_SAVE_SENT"`
+	MailSaveSent    bool   `default:"true"                           env:"MAIL_SAVE_SENT"`
 	AuthservID      string `env:"MAIL_TRUSTED_AUTHSERV_ID"`
 	PhoneURL        string `env:"DIKCIZ_MCP_URL"`
 	PhoneToken      string `env:"DIKCIZ_API_KEY"`
@@ -52,7 +56,7 @@ type Config struct {
 	ModemBoxModemID string `env:"MODEMBOX_MODEM_ID"`
 	KeePassBoxURL   string `env:"KEEPASSBOX_MCP_URL"`
 	KeePassBoxToken string `env:"KEEPASSBOX_TOKEN"`
-	TailnetHostname string `default:"autonomous-stack"     env:"TS_HOSTNAME"`
+	TailnetHostname string `default:"autonomous-stack"               env:"TS_HOSTNAME"`
 }
 
 func Load() (Config, error) {
@@ -73,7 +77,11 @@ func (c Config) Validate() error {
 		return ctxerrors.Wrap(err, "tailnet hostname")
 	}
 
-	if c.local("claude") {
+	if c.agentEnabled() {
+		if err := c.validateHarness(); err != nil {
+			return ctxerrors.Wrap(err, "agent harness")
+		}
+
 		if err := c.validateOwner(); err != nil {
 			return ctxerrors.Wrap(err, "owner configuration")
 		}
@@ -137,7 +145,7 @@ func (c Config) validateAgent() error {
 
 	if strings.TrimSpace(c.Heartbeat) == "" ||
 		strings.TrimSpace(c.SystemPrompt) == "" ||
-		c.Model == "" {
+		c.runtimeModel() == "" {
 		return ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
 			"model and prompts cannot be empty",
@@ -145,7 +153,7 @@ func (c Config) validateAgent() error {
 	}
 
 	switch c.Effort {
-	case "low", "medium", "high", "max":
+	case "low", "medium", "high", maximumEffort:
 	default:
 		return ctxerrors.Wrap(
 			commerr.ErrValidationFailed,
@@ -260,7 +268,7 @@ func Generate(cfg Config, root string) error {
 		}
 	}
 
-	if cfg.local("claude") {
+	if cfg.agentEnabled() {
 		if err := prepareIdentity(cfg, root); err != nil {
 			return ctxerrors.Wrap(err, "prepare account password storage")
 		}
@@ -271,11 +279,11 @@ func Generate(cfg Config, root string) error {
 
 func (c Config) generatedFiles() map[string]any {
 	files := make(map[string]any)
-	if c.local("claude") {
+	if c.agentEnabled() {
 		files["config/generated/cron.yml"] = cronConfig(c)
 		files["config/generated/telegram.yml"] = telegramConfig(c)
 		files["data/workspace/agent/.mcp.json"] = map[string]any{
-			"mcpServers": configuredMCPServers(c),
+			"mcpServers": c.projectMCPServers(),
 		}
 		settingsPath := "data/workspace/agent/.claude/settings.local.json"
 		files[settingsPath] = map[string]any{
@@ -345,15 +353,20 @@ func writeJSON(path string, value any) error {
 }
 
 func cronConfig(cfg Config) map[string]any {
+	schedule := cfg.Schedule
+	if cfg.HarnessPlatform == piBox && len(strings.Fields(schedule)) == 5 {
+		schedule = "0 " + schedule
+	}
+
 	return map[string]any{
-		"model":                cfg.Model,
-		"effort":               cfg.Effort,
+		"model":                cfg.runtimeModel(),
+		"effort":               cfg.runtimeEffort(),
 		"telegram_chat_id":     cfg.TelegramChatID,
 		"append_system_prompt": cfg.SystemPrompt,
 		"jobs": []any{
 			map[string]any{
 				"name":        "heartbeat",
-				"schedule":    cfg.Schedule,
+				"schedule":    schedule,
 				"workspace":   "agent",
 				"instruction": cfg.Heartbeat,
 			},
@@ -365,8 +378,8 @@ func telegramConfig(cfg Config) map[string]any {
 	return map[string]any{
 		"allowed_chats": []int64{cfg.TelegramChatID},
 		"default": map[string]any{
-			"model":                cfg.Model,
-			"effort":               cfg.Effort,
+			"model":                cfg.runtimeModel(),
+			"effort":               cfg.runtimeEffort(),
 			"continue":             true,
 			"append_system_prompt": cfg.SystemPrompt,
 		},

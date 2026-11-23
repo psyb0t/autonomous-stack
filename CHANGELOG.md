@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.5.0 (2026-11-23)
+
+- Ship the deployment as `docker-compose.yml`. If your scripts pass `-f compose.yml`, update the filename.
+- Add a README contents list, documentation links and sponsor links.
+- Select Claudebox or PiBox with `HARNESS_PLATFORM`. Claudebox remains the default. PiBox supports Z.ai, Telegram, cron and the stack's MCP tools.
+
 ## v0.4.0 (2026-11-23)
 
 - Use the published Go image by default. Select local services with Compose profiles, or point the agent at remote browser, Mailbox, handoff, ModemBox and KeePassBox endpoints.
