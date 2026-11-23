@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Rewrite the README and operator guides around setup, browser handoffs and optional MCP connections.
+
 ## v0.3.0 (2026-11-23)
 
 - Connect to optional ModemBox and KeePassBox MCP servers for verification SMS, encrypted account credentials and TOTP. Set the endpoint URLs and bearer tokens in `.env` and run `make restart` to enable them.

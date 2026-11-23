@@ -4,7 +4,7 @@
 
 Use Make for tooling. Normal tooling has no Docker socket. Infrastructure tests receive it only through the framework's dedicated test target. `make test-coverage` uses the race detector, includes integration packages and enforces the coverage floor. Fixtures use local HTTP, real files and owned child processes, without paid calls, bot polling or public tunnels.
 
-`make generate` discovers service implementations and regenerates registration. Edit its sources, not generated files.
+`make generate` finds the service implementations and writes the registration code. Make your changes in the service source so they survive regeneration.
 
 `make test-runtime` builds the helper and starts isolated browser, Mailbox and helper containers with disposable account settings. It tests generated configuration, the real viewer, readiness and MCP authentication, then stops only its own fixtures. It never starts Claude, polls Telegram or opens a public tunnel. Pull the upstream service images with `make pull` first.
 
@@ -20,7 +20,7 @@ Use Make for tooling. Normal tooling has no Docker socket. Infrastructure tests 
 
 Main pushes pass code checks before publishing `sha-<commit>` and `latest`. Scheduled runs refresh checks and badges without publishing images. Security reports use the reusable workflows.
 
-A release tag calls `wait-for-default-branch.yml`, waiting for the successful main push of the exact tagged commit. A failed run, timeout or commit absent from main blocks release. Image promotion then retags that tested image for all platforms. The tag pipeline does not rebuild it. The GitHub release follows promotion; coverage comes from the matching main run.
+The tag job waits for the exact commit to pass on `main`. If the run fails, times out or the commit isn't on `main`, the release stops. On success, the job puts the release tag on the image it already tested for each platform. GitHub publishes the release after image promotion and takes coverage from that same main run.
 
 Other callers mirror to GitLab/Codeberg, import mirror issues, archive public pages and close external PRs without executing their code.
 

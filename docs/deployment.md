@@ -1,6 +1,6 @@
 # Deployment
 
-Docker must run on the machine holding this checkout. Bind paths are resolved by its daemon. A remote Docker context with another filesystem is not supported by local setup.
+Run Docker on the machine with this checkout. The daemon resolves bind paths on its own filesystem, so setup needs that machine's copy of the files.
 
 ## Data and ownership
 
@@ -24,7 +24,7 @@ Root and Docker-group users can inspect container credentials. `.env` permission
 
 ## Operation
 
-`make status` shows health. `make logs` follows bounded logs. `make stop` pauses services. `make restart` rebuilds the helper, validates settings and recreates services. `make pull` refreshes the other first-party images without restarting them. Back up state before updates and read upstream compatibility notes.
+`make status` tells you what's up. `make logs` follows the logs. Use `make pull` to grab fresh images and `make restart` to rebuild the helper, check settings and recreate the services. Use `make stop` when you want the stack quiet. Back up state and check the upstream release notes before updating.
 
 Claudebox has no readiness endpoint in Telegram mode. Its healthcheck checks the native bot process, which also starts the cron scheduler in a thread. It does not prove an external Telegram connection or Claude authentication. Check an owner message and a heartbeat after initial deployment.
 

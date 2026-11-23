@@ -1,6 +1,6 @@
-# Human assistance
+# Take over the browser
 
-The browser stays available at `http://autonomous-stack`. Tailscale or Headscale membership and ACLs control who can reach it. Every permitted client can control the browser desktop. There is no viewer password, expiring link or handoff cookie. Never publish the viewer listener outside the trusted tailnet.
+Open `http://autonomous-stack` on your tailnet. Your Tailscale or Headscale ACLs decide who gets a keyboard and mouse. Keep the viewer on that trusted network.
 
 | Tool | Input | Effect |
 | --- | --- | --- |
@@ -11,9 +11,9 @@ The browser stays available at `http://autonomous-stack`. Tailscale or Headscale
 
 Only one request can be pending or active. Repeating its task key is idempotent. A different task conflicts until the current request is completed. Failed pending notifications can be retried using the same key. Pending requests expire according to `AUTONOMOUS_REQUEST_TTL`; active assistance has no timer.
 
-The owner replies `ready` and `done` in the allowed Telegram chat. The agent maps these replies to the current request internally. No request ID needs copying. Readiness is agent-enforced coordination, not an independent proof of the Telegram reply. The helper still requires bearer authentication for all MCP calls.
+Reply `ready` in Telegram when you're taking over and `done` when the agent can come back. The agent matches those replies to the current request. It handles the coordination. The helper checks the MCP bearer token on every call.
 
-Pause automation when requesting assistance. While assistance is active, the agent leaves the browser alone. After completion, it checks the page before continuing. Opening the viewer independently does not automatically pause an agent; tell it when taking control.
+The agent should leave the browser alone while you work and check the page after you say `done`. If you open the viewer on your own, tell it to pause before you start clicking.
 
 Completing or cancelling a request never revokes viewer access or disconnects its streams. Restart preserves active assistance and pending requests. Legacy active state is upgraded by clearing its obsolete access deadline. Old `/connect/...` links redirect to the normal viewer without creating a cookie.
 

@@ -1,8 +1,8 @@
 # Configuration
 
-Run `make init`, then edit `.env`. Use Compose dotenv quoting for spaces, multiline prompts, `#` and `$`. Single quotes preserve literal dollar signs. Do not source an untrusted env file in a shell.
+Run `make init` and fill in `.env`. Compose reads this file as dotenv. Quote spaces, multiline prompts, `#` and `$` as needed. Use single quotes when you want a dollar sign to stay a dollar sign. Keep untrusted dotenv files out of your shell.
 
-`make setup` writes mode-0600 private files under `config/generated/` and generates workspace MCP settings. The `.yml` files use JSON syntax, which is valid YAML. Edit `.env`, not those generated outputs.
+`make setup` writes private config under `config/generated/` and MCP settings into the workspace. All those files are mode 0600. The `.yml` files contain JSON, which YAML accepts. Make your changes in `.env` so they survive the next setup run.
 
 ## Claude
 
@@ -36,13 +36,13 @@ Set both `DIKCIZ_MCP_URL` and `DIKCIZ_API_KEY` to add a [Dikciz Launcher](https:
 
 ### ModemBox
 
-Set `MODEMBOX_MCP_URL` to the full [ModemBox MCP endpoint](https://psyb0t.github.io/docker-modembox/mcp/) on your modem host and `MODEMBOX_TOKEN` to its operator token. Both empty disables the connection. The Claude container must be able to reach the endpoint. Use HTTPS or an isolated trusted network. A ModemBox operator token has access to every feature exposed by that instance, so use a dedicated instance or SIM for the agent.
+Run ModemBox on the machine with the USB stick. Set `MODEMBOX_MCP_URL` to that instance's full MCP URL, including `/mcp`, and `MODEMBOX_TOKEN` to its operator token. The Claude container needs to reach it over HTTPS or an isolated trusted network. An operator token can use every feature on that instance, so give the agent a dedicated instance or SIM. Leave both settings empty to skip ModemBox. See the [ModemBox MCP guide](https://psyb0t.github.io/docker-modembox/mcp/).
 
 For SMS verification, set `MODEMBOX_MODEM_ID` to the device ID from ModemBox that you have confirmed serves `AUTONOMOUS_PHONE_NUMBER`. Setup records the mapping as `modembox_modem_id` in the generated identity. Update it if you change the SIM. Both Dikciz and ModemBox can be configured, and the agent uses the mapping to select the right inbox.
 
-### KeePassBox
+## KeePassBox
 
-Set `KEEPASSBOX_MCP_URL` to the full [KeePassBox MCP endpoint](https://psyb0t.github.io/docker-keepassbox/mcp/) and `KEEPASSBOX_TOKEN` to a bearer token for a dedicated agent owner. Provide an agent vault with entry read and write permissions and access to secrets if the agent needs to retrieve passwords or generate TOTP codes. Both settings empty disables the connection. Keep the endpoint reachable from Claude over HTTPS or an isolated trusted network. The vault must be accessible before the agent submits an account signup.
+Give the agent its own KeePassBox vault. Set `KEEPASSBOX_MCP_URL` to the instance's full MCP URL, including `/mcp`, and `KEEPASSBOX_TOKEN` to its bearer token. Grant entry read and write access, plus secret access if the agent needs passwords or TOTP codes. Claude needs to reach the vault over HTTPS or an isolated trusted network before it can submit a signup. Leave both settings empty to skip KeePassBox. See the [KeePassBox MCP guide](https://psyb0t.github.io/docker-keepassbox/mcp/).
 
 These connections use existing services. Run `make restart` after changing either endpoint or token so setup regenerates the private MCP configuration.
 

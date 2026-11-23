@@ -8,13 +8,13 @@
 [![imported by](https://raw.githubusercontent.com/psyb0t/autonomous-stack/badges/importers.svg)](https://github.com/psyb0t/autonomous-stack/blob/badges/importers.md)
 [![Docker Pulls](https://img.shields.io/docker/pulls/psyb0t/autonomous-stack?style=flat-square)](https://hub.docker.com/r/psyb0t/autonomous-stack)
 
-Self-hosted autonomous agent stack with scheduled work, Telegram, email, a persistent browser and human assistance. Currently runs Claude Code through Claudebox.
+Run Claude Code on your own box. Give it work over Telegram, put jobs on a schedule, and keep the same browser session between runs. When it gets stuck, open that browser on your tailnet and take the wheel.
 
-Claude does the work. Claudebox wakes it on a schedule and receives your Telegram messages. Mailbox and the browser expose MCP tools. A small Go service manages human-help requests and the persistent tailnet viewer.
+Mailbox handles email. Plug in ModemBox for verification texts and KeePassBox for passwords and TOTP. Docker Compose holds the whole thing together.
 
 ## Quick start
 
-Requires Docker with Compose v2, Make and Git. Use a machine you control and dedicated agent accounts.
+Grab a machine you control, Docker with Compose v2, Make and Git. Give the agent its own accounts.
 
 ```bash
 git clone https://github.com/psyb0t/autonomous-stack.git
@@ -30,7 +30,7 @@ Edit `.env` and configure:
 4. The heartbeat schedule and prompts describing your tasks.
 5. A Tailscale or Headscale auth key and a unique `TS_HOSTNAME` for browser access.
 
-Start a conversation with the bot before deploying. Do not run another Telegram poller with the same bot token.
+Message the bot from your owner account before you start the stack. If an old process is polling with that token, stop it first.
 
 ```bash
 make pull
@@ -38,11 +38,11 @@ make up
 make status
 ```
 
-`make up` builds the local helper image, validates settings, generates private configuration and starts the stack. The other service images come from Docker Hub. No host Go installation is needed.
+`make up` checks your settings, builds the helper image in Docker and starts the stack. The other images come from Docker Hub.
 
 `make init` generates distinct internal API tokens and never replaces an existing `.env`. Real credentials, runtime settings and data stay ignored by Git.
 
-## Components
+## What's running in this thing?
 
 | Service | Project | Responsibility |
 | --- | --- | --- |
@@ -56,9 +56,9 @@ make status
 
 The helper uses [servicepack](https://github.com/psyb0t/servicepack) for its lifecycle. Claudebox owns scheduling and Telegram polling. For USB modem access, run ModemBox on the host that has the modem attached.
 
-No ports are published on the host. Tool APIs use bearer authentication on the Compose network. Tailscale Serve exposes the browser viewer at `http://autonomous-stack` by default. Tailnet membership and ACLs control access; there is no viewer password or expiring link. Anyone permitted to reach that node can control the browser, so restrict its ACLs accordingly. The MCP and browser automation APIs are not exposed through Serve. Nothing uses Funnel or a public tunnel.
+Open `http://autonomous-stack` on your tailnet to see the browser. Anyone your ACLs let through can drive it, so give that access to people you'd trust with the keyboard. Tailscale Serve exposes only the viewer. The stack's MCP and browser automation APIs stay on the Compose network behind bearer authentication.
 
-## Human help
+## When Claude gets stuck
 
 The agent can try an encountered CAPTCHA once using a screenshot, or use an optional owner-configured solver. Solvers default off; see [CAPTCHA settings](docs/configuration.md#optional-captcha-solver). If the selected approach fails, it requests help and pauses that page.
 
@@ -67,7 +67,7 @@ The agent can try an encountered CAPTCHA once using a screenshot, or use an opti
 3. Open `http://autonomous-stack` and complete the task.
 4. Reply `done` so the agent can inspect the page and resume.
 
-The viewer stays available before, during and after help requests. No request ID needs copying, and `done` never closes browser access. Readiness depends on the agent following the owner's reply, not independent verification by the helper. See [handoff behavior](docs/handoff.md).
+The same link works any time. Drop in to watch, or tell the agent to pause if you're taking over. See [how handoffs work](docs/handoff.md).
 
 ## Persistent data
 
@@ -90,7 +90,7 @@ Tracked `.gitkeep` files keep these directories present. Their runtime contents 
 
 After changing `.env` or pulling source, run `make restart`. It rebuilds the helper, regenerates configuration and recreates services. `make pull` refreshes upstream service images. `make stop` stops services; `make down` removes containers and the network without deleting persistent bind data.
 
-Claude Code runs with unattended tool permissions. Its accounts, mounts and network define its reach. Use dedicated accounts and a narrow task scope. Prompt instructions do not make hostile pages or email safe.
+Claude can use its tools while you're away. Its accounts, mounts and network access decide what it can touch. Give it what it needs for the job and watch the first few runs.
 
 See [deployment](docs/deployment.md) for ownership, backup and privilege details.
 
