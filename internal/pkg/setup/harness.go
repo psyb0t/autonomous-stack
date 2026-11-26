@@ -3,7 +3,6 @@ package setup
 import (
 	"strings"
 
-	"github.com/psyb0t/autonomous-stack/internal/pkg/config"
 	"github.com/psyb0t/ctxerrors"
 	"github.com/psyb0t/ctxerrors/commerr"
 )
@@ -34,10 +33,6 @@ func (c Config) validateHarness() error {
 				commerr.ErrValidationFailed,
 				"PiBox requires a Z.ai token and model",
 			)
-		}
-
-		if err := config.ValidateURL(c.ZAIBaseURL); err != nil {
-			return ctxerrors.Wrap(err, "invalid PiBox Z.ai base URL")
 		}
 
 		return nil

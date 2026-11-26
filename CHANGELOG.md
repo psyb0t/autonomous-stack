@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.6.0 (2026-11-26)
+
+- Run PiBox through Pi's built-in `zai` provider, which calls the Z.ai Coding Plan API directly. The token in `PIBOX_ZAI_AUTH_TOKEN` now reaches Pi as `ZAI_API_KEY`, and `PIBOX_ZAI_DEFAULT_MODEL` accepts any model Pi lists for `zai`, such as `glm-5.3`.
+- Remove `PIBOX_ZAI_BASE_URL`. PiBox no longer goes through the Z.ai Anthropic-compatible endpoint, so delete the setting from `.env`; it is ignored if left in place. Run `make pull` and `make restart` to switch.
+
 ## v0.5.0 (2026-11-23)
 
 - Ship the deployment as `docker-compose.yml`. If your scripts pass `-f compose.yml`, update the filename.

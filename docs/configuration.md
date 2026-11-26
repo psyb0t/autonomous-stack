@@ -45,11 +45,10 @@ Set these in your ignored `.env`:
 ```dotenv
 HARNESS_PLATFORM=pibox
 PIBOX_ZAI_AUTH_TOKEN=your-z-ai-token-here
-PIBOX_ZAI_BASE_URL=https://api.z.ai/api/anthropic
 PIBOX_ZAI_DEFAULT_MODEL=glm-5.3-flash
 ```
 
-PiBox uses the Z.ai Anthropic Messages endpoint. The URL and model shown are the defaults. Compose runs the same cron and Telegram modes with the model you select. The MCP bridge connects PiBox's stdio tool client to the configured HTTP MCP endpoints. The service still appears as `claude` in Compose to keep existing commands working.
+PiBox uses Pi's built-in `zai` provider, which calls the Z.ai Coding Plan API directly with the token as `ZAI_API_KEY`. The model shown is the default; any model Pi lists for `zai` works, such as `glm-5.3`. `PIBOX_ZAI_BASE_URL` is no longer read. Compose runs the same cron and Telegram modes with the model you select. The MCP bridge connects PiBox's stdio tool client to the configured HTTP MCP endpoints. The service still appears as `claude` in Compose to keep existing commands working.
 
 ## Telegram
 

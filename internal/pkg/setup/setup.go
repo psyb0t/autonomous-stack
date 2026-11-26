@@ -21,14 +21,13 @@ type Config struct {
 	Profiles        string `env:"STACK_PROFILES"`
 	HarnessPlatform string `env:"HARNESS_PLATFORM"`
 	ZAIAuthToken    string `env:"PIBOX_ZAI_AUTH_TOKEN"`
-	ZAIBaseURL      string `default:"https://api.z.ai/api/anthropic" env:"PIBOX_ZAI_BASE_URL"`
-	ZAIModel        string `default:"glm-5.3-flash"                  env:"PIBOX_ZAI_DEFAULT_MODEL"`
+	ZAIModel        string `default:"glm-5.3-flash"        env:"PIBOX_ZAI_DEFAULT_MODEL"`
 	TelegramChatID  int64  `env:"TELEGRAM_CHAT_ID"`
 	TelegramUserID  int64  `env:"TELEGRAM_USER_ID"`
 	TelegramToken   string `env:"TELEGRAM_BOT_TOKEN"`
-	Model           string `default:"sonnet"                         env:"CLAUDE_MODEL"`
-	Effort          string `default:"high"                           env:"CLAUDE_EFFORT"`
-	Schedule        string `default:"*/30 * * * *"                   env:"HEARTBEAT_SCHEDULE"`
+	Model           string `default:"sonnet"               env:"CLAUDE_MODEL"`
+	Effort          string `default:"high"                 env:"CLAUDE_EFFORT"`
+	Schedule        string `default:"*/30 * * * *"         env:"HEARTBEAT_SCHEDULE"`
 	Heartbeat       string `env:"HEARTBEAT_PROMPT"`
 	SystemPrompt    string `env:"AGENT_PROMPT"`
 	HandoffURL      string `env:"HANDOFF_MCP_URL"`
@@ -38,15 +37,15 @@ type Config struct {
 	MailboxURL      string `env:"MAILBOX_MCP_URL"`
 	MailboxToken    string `env:"MAILBOX_TOKEN"`
 	IMAPHost        string `env:"MAIL_IMAP_HOST"`
-	IMAPPort        int    `default:"993"                            env:"MAIL_IMAP_PORT"`
-	IMAPTLS         string `default:"ssl"                            env:"MAIL_IMAP_TLS"`
+	IMAPPort        int    `default:"993"                  env:"MAIL_IMAP_PORT"`
+	IMAPTLS         string `default:"ssl"                  env:"MAIL_IMAP_TLS"`
 	SMTPHost        string `env:"MAIL_SMTP_HOST"`
-	SMTPPort        int    `default:"587"                            env:"MAIL_SMTP_PORT"`
-	SMTPTLS         string `default:"starttls"                       env:"MAIL_SMTP_TLS"`
+	SMTPPort        int    `default:"587"                  env:"MAIL_SMTP_PORT"`
+	SMTPTLS         string `default:"starttls"             env:"MAIL_SMTP_TLS"`
 	MailUsername    string `env:"MAIL_USERNAME"`
 	MailPassword    string `env:"MAIL_PASSWORD"`
 	MailFrom        string `env:"MAIL_FROM"`
-	MailSaveSent    bool   `default:"true"                           env:"MAIL_SAVE_SENT"`
+	MailSaveSent    bool   `default:"true"                 env:"MAIL_SAVE_SENT"`
 	AuthservID      string `env:"MAIL_TRUSTED_AUTHSERV_ID"`
 	PhoneURL        string `env:"DIKCIZ_MCP_URL"`
 	PhoneToken      string `env:"DIKCIZ_API_KEY"`
@@ -56,7 +55,7 @@ type Config struct {
 	ModemBoxModemID string `env:"MODEMBOX_MODEM_ID"`
 	KeePassBoxURL   string `env:"KEEPASSBOX_MCP_URL"`
 	KeePassBoxToken string `env:"KEEPASSBOX_TOKEN"`
-	TailnetHostname string `default:"autonomous-stack"               env:"TS_HOSTNAME"`
+	TailnetHostname string `default:"autonomous-stack"     env:"TS_HOSTNAME"`
 }
 
 func Load() (Config, error) {

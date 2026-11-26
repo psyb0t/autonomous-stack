@@ -18,7 +18,6 @@ services:
       SERVICES_ENABLED: ''
       STACK_PROFILES: ${COMPOSE_PROFILES:-none}
       HARNESS_PLATFORM: ${HARNESS_PLATFORM:-claudebox}
-      PIBOX_ZAI_BASE_URL: ${PIBOX_ZAI_BASE_URL:-https://api.z.ai/api/anthropic}
       PIBOX_ZAI_AUTH_TOKEN: ${PIBOX_ZAI_AUTH_TOKEN:-}
       PIBOX_ZAI_DEFAULT_MODEL: ${PIBOX_ZAI_DEFAULT_MODEL:-glm-5.3-flash}
       ENV: prod

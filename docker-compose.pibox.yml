@@ -2,12 +2,8 @@ services:
   harness:
     image: psyb0t/pibox:latest
     environment:
-      PIBOX_PROVIDER_NAME: zai
-      PIBOX_PROVIDER_API: anthropic-messages
-      PIBOX_PROVIDER_BASE_URL: ${PIBOX_ZAI_BASE_URL:-https://api.z.ai/api/anthropic}
-      PIBOX_PROVIDER_API_KEY: ${PIBOX_ZAI_AUTH_TOKEN:-}
-      PIBOX_PROVIDER_MODEL: ${PIBOX_ZAI_DEFAULT_MODEL:-glm-5.3-flash}
-      PIBOX_AVAILABLE_MODELS: ${PIBOX_ZAI_DEFAULT_MODEL:-glm-5.3-flash}
+      # Pi's built-in zai provider talks to the Z.ai Coding Plan API directly.
+      ZAI_API_KEY: ${PIBOX_ZAI_AUTH_TOKEN:-}
     volumes:
       - ./config/agent.md:/workspace/agent/AGENTS.md:ro
       - ./scripts/pibox-mcp-bridge.js:/opt/stack/pibox-mcp-bridge.js:ro

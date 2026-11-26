@@ -17,7 +17,6 @@ func TestPiBoxConfig(t *testing.T) {
 	cfg.Profiles = "agent,browser"
 	cfg.HarnessPlatform = piBox
 	cfg.ZAIAuthToken = "your-z-ai-token-here"
-	cfg.ZAIBaseURL = "https://provider.example/api/anthropic"
 	cfg.ZAIModel = "fixture-model"
 	cfg.Effort = maximumEffort
 	root := t.TempDir()
@@ -70,6 +69,5 @@ func TestHarnessValidation(t *testing.T) {
 
 	cfg.ZAIAuthToken = "your-z-ai-token-here"
 	cfg.ZAIModel = "fixture-model"
-	cfg.ZAIBaseURL = "file:///tmp/invalid"
-	require.ErrorIs(t, cfg.Validate(), commerr.ErrValidationFailed)
+	require.NoError(t, cfg.Validate())
 }
