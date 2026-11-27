@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.6.1 (2026-11-27)
+
+- Fix the browser tools under PiBox. The local browser's MCP URL is now `http://browser:8080/mcp/`. Stealthy Auto-Browse redirects `/mcp` to `/mcp/`, and PiBox's MCP bridge refuses redirects so it never sends the bearer token elsewhere, so the agent had no browser tools on any PiBox run. Run `make pull` and `make setup`, then `make restart`. A remote `BROWSER_MCP_URL` needs the exact path the service serves; see [configuration](docs/configuration.md#local-and-remote-services).
+
 ## v0.6.0 (2026-11-26)
 
 - Run PiBox through Pi's built-in `zai` provider, which calls the Z.ai Coding Plan API directly. The token in `PIBOX_ZAI_AUTH_TOKEN` now reaches Pi as `ZAI_API_KEY`, and `PIBOX_ZAI_DEFAULT_MODEL` accepts any model Pi lists for `zai`, such as `glm-5.3`.

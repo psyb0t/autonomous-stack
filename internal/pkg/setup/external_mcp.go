@@ -31,7 +31,7 @@ type externalMCPService struct {
 func (c Config) mcpServices() []externalMCPService {
 	services := []externalMCPService{
 		{
-			"browser", c.BrowserURL, "http://browser:8080/mcp",
+			"browser", c.BrowserURL, "http://browser:8080/mcp/",
 			c.BrowserToken, config.MinimumTokenLength,
 		},
 		{

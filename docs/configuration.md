@@ -12,7 +12,7 @@ List the local containers you want in `COMPOSE_PROFILES`. This is the default fo
 COMPOSE_PROFILES=agent,browser,mailbox,handoff,tailscale
 ```
 
-Add `modembox` or `keepassbox` to run either locally. To use a service that already runs elsewhere, remove its profile and set its remote URL, including `/mcp`, and the token issued by that service. With the profile and URL both absent, the agent skips the integration. Use the `.env` setting to select profiles so the containers and generated MCP config agree.
+Add `modembox` or `keepassbox` to run either locally. To use a service that already runs elsewhere, remove its profile and set its remote URL, with the exact MCP path the service serves, and the token issued by that service. PiBox's MCP bridge does not follow redirects, so it never sends the bearer token to another address: use `/mcp/` for Stealthy Auto-Browse, which redirects `/mcp` there, and `/mcp` for Mailbox. With the profile and URL both absent, the agent skips the integration. Use the `.env` setting to select profiles so the containers and generated MCP config agree.
 
 | Local profile | Remote URL | Token |
 | --- | --- | --- |

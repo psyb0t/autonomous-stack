@@ -34,7 +34,7 @@ func TestPiBoxConfig(t *testing.T) {
 		Command: "node",
 		Args:    []string{"/opt/stack/pibox-mcp-bridge.js"},
 		Env: map[string]string{
-			"AUTONOMOUS_MCP_URL":           "http://browser:8080/mcp",
+			"AUTONOMOUS_MCP_URL":           "http://browser:8080/mcp/",
 			"AUTONOMOUS_MCP_AUTHORIZATION": "Bearer " + cfg.BrowserToken,
 		},
 	}, project["mcpServers"]["browser"])
